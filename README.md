@@ -20,7 +20,8 @@ Also in every tool: links and QR codes / barcodes in documents open with a tap (
 your default browser), and Insert › Barcode makes QR, Data Matrix, Aztec, PDF417, Code 128/39,
 EAN-13 and UPC-A codes.
 
-Status: **0.1.0**, first release. Download the signed APK from [Releases](https://github.com/HappyRock616/document-slate/releases).
+Status: **0.1.1**. Download the signed APK from [Releases](https://github.com/HappyRock616/document-slate/releases),
+or add this repository to [Obtainium](https://github.com/ImranR98/Obtainium) for automatic updates.
 Planned: F-Droid and Play Store.
 
 ![Start screen, Word Slate, Grid Slate, Deck Slate and Page Slate](DocumentSlate/docs/images/gallery.png)

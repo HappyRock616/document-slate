@@ -1,0 +1,1 @@
+Fix: after opening a file with the file picker, the toolbar no longer ignores taps (the viewer bars now start fresh for each opened document).

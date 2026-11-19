@@ -34,8 +34,9 @@ Status as of 2026-11-19: version 0.1.0 released. All four tools run in one app a
 - [x] Real-phone check: keyboard autocorrect (typed on the on-screen keyboard: "teh" → "the",
       "adn" → "and"), app resume after screen lock (fingerprint unlock).
 - [x] Privacy scan (files and APK), first commit, public GitHub repository, release `v0.1.0`.
-- [ ] F-Droid: 2-8 phone screenshots (test files only),
-      merge request to fdroiddata (see [PUBLISHING.md](PUBLISHING.md)).
+- [x] F-Droid store screenshots (fastlane, test files only).
+- [ ] F-Droid: resubmit around February 2027 (needs about 3 months of active development;
+      see [PUBLISHING.md](PUBLISHING.md)). Meanwhile: GitHub releases, installable with Obtainium.
 
 ## Later
 

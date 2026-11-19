@@ -216,6 +216,7 @@ impl SlateApp {
                     self.other = Some(s);
                     self.current_uri = (!uri.is_empty()).then(|| uri.to_owned());
                     self.discard_armed = false;
+                    self.bars = chrome::AutoHide::default(); // fresh viewer-bar timer for the new document
                     self.status.clear();
                     self.settings.touch_recent(name, uri);
                 }
@@ -239,6 +240,7 @@ impl SlateApp {
                 self.other = None;
                 self.current_uri = (!uri.is_empty()).then(|| uri.to_owned());
                 self.discard_armed = false;
+                self.bars = chrome::AutoHide::default(); // fresh viewer-bar timer for the new document
                 self.status.clear();
                 self.settings.touch_recent(name, uri);
             }
@@ -258,6 +260,7 @@ impl SlateApp {
             self.other = Some(s);
             self.current_uri = None;
             self.discard_armed = false;
+            self.bars = chrome::AutoHide::default(); // fresh viewer-bar timer for the new document
             self.status.clear();
             return;
         }
@@ -270,6 +273,7 @@ impl SlateApp {
         self.viewer = Some(v);
         self.current_uri = None;
         self.discard_armed = false;
+        self.bars = chrome::AutoHide::default(); // fresh viewer-bar timer for the new document
         self.status.clear();
     }
 

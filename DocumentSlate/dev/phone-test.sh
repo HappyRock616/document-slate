@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
-# Build Document Slate for a real phone (arm64 only, quick debug APK), install it, start it,
-# and optionally take a screenshot. Stops at the first error.
+# Build Document Slate for a real phone (arm64 only), install it, start it, and optionally take a
+# screenshot. Stops at the first error.
+# Builds a RELEASE APK signed with the release key (android/keystore.properties), so it installs
+# over the GitHub/Obtainium copy on the phone. No debug builds (Darren, 2026-11-19).
+# Faster than build-release.ps1: plain release profile (thin LTO) instead of release-small.
 # Device: set PHONE=<serial from 'adb devices'> or put it in dev/local.env (git-ignored).
 #   usage (Git Bash):  dev/phone-test.sh [screenshot-name]
 # Screenshots go to ../_cleanup/ (git-ignored scratch folder).
@@ -18,13 +21,14 @@ SHOT_DIR="../_cleanup"
 mkdir -p "$SHOT_DIR"
 
 echo "== Rust (Android arm64)"
-cargo ndk -t arm64-v8a --platform 26 -o android/app/src/main/jniLibs build --release --lib -q
+cargo ndk -t arm64-v8a --platform 26 -o android/release-jniLibs build --release --lib -q
 
-echo "== APK"
-(cd android && ./gradlew.bat assembleDebug --offline -q 2>&1 | { grep -vi deprecat || true; })
+echo "== APK (release, release key)"
+[ -f android/keystore.properties ] || { echo "android/keystore.properties missing: would sign with the debug key"; exit 1; }
+(cd android && ./gradlew.bat assembleRelease --offline -q 2>&1 | { grep -vi deprecat || true; })
 
 echo "== Install + launch on $PHONE"
-"$ADB" -s "$PHONE" install -r android/app/build/outputs/apk/debug/app-debug.apk | tail -1
+"$ADB" -s "$PHONE" install -r android/app/build/outputs/apk/release/app-release.apk | tail -1
 "$ADB" -s "$PHONE" shell am force-stop org.documentslate.app
 "$ADB" -s "$PHONE" logcat -c
 "$ADB" -s "$PHONE" shell am start -n org.documentslate.app/.MainActivity >/dev/null
