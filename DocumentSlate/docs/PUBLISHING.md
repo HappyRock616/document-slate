@@ -30,7 +30,7 @@ git commit -m "Document Slate 0.1.0"
 gh repo create document-slate --public --source . --remote origin --push
 git tag v0.1.0
 git push origin v0.1.0
-gh release create v0.1.0 --title "Document Slate 0.1.0 (beta)" --notes-file fastlane\metadata\android\en-US\changelogs\1.txt DocumentSlate\android\app\build\outputs\apk\release\app-release.apk#document-slate-0.1.0.apk
+gh release create v0.1.0 --title "Document Slate 0.1.0" --notes-file fastlane\metadata\android\en-US\changelogs\1.txt DocumentSlate\android\app\build\outputs\apk\release\app-release.apk#document-slate-0.1.0.apk
 ```
 
 Later releases: raise `versionCode`/`versionName` in `build.gradle.kts`, add

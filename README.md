@@ -18,7 +18,7 @@ Also in every tool: links and QR codes / barcodes in documents open with a tap (
 your default browser), and Insert › Barcode makes QR, Data Matrix, Aztec, PDF417, Code 128/39,
 EAN-13 and UPC-A codes.
 
-Status: **beta 0.1.0**. Download the signed APK from [Releases](https://github.com/HappyRock616/document-slate/releases).
+Status: **0.1.0**, first release. Download the signed APK from [Releases](https://github.com/HappyRock616/document-slate/releases).
 Planned: F-Droid and Play Store.
 
 ## Repository layout

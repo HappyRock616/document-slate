@@ -1,6 +1,6 @@
 # Roadmap
 
-Status as of 2026-11-19: beta 0.1.0. All four tools run in one app and have been tested on a real phone.
+Status as of 2026-11-19: version 0.1.0 released. All four tools run in one app and have been tested on a real phone.
 
 ## Done (first draft)
 
@@ -24,14 +24,15 @@ Status as of 2026-11-19: beta 0.1.0. All four tools run in one app and have been
   holds and open web addresses in the default browser; Insert › Barcode makes QR, Data Matrix,
   Aztec, PDF417, Code 128/39, EAN-13 and UPC-A.
 
-## Before the first beta
+## Before the first release
 
 - [x] Signed release build measured against the 150 MB target: APK 41 MB, installed ~128 MB.
-- [ ] Print to a real Wi-Fi printer (all four apps).
+- [ ] Print to a real Wi-Fi printer (all four apps). Deferred: no printer paired with the test phone.
 - [x] Privacy policy: date and contact (GitHub issues) filled in; published with the repository.
 - [x] PDF test `fill_and_sign_marks`: typed text is an annotation until flattened (test fixed).
       Engine quirk left: text extraction can split a flattened word, so search may miss it.
-- [ ] Real-phone check: keyboard autocorrect, app resume after screen lock.
+- [x] Real-phone check: keyboard autocorrect (typed on the on-screen keyboard: "teh" → "the",
+      "adn" → "and"), app resume after screen lock (fingerprint unlock).
 - [x] Privacy scan (files and APK), first commit, public GitHub repository, release `v0.1.0`.
 - [ ] F-Droid: 2-8 phone screenshots (test files only),
       merge request to fdroiddata (see [PUBLISHING.md](PUBLISHING.md)).

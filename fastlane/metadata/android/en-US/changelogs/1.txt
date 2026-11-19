@@ -1,1 +1,1 @@
-First beta: Word Slate, Grid Slate, Deck Slate and Page Slate in one app. View, edit, save and print documents, spreadsheets, slides and PDFs; fill, sign and certificate-sign PDFs; make and read QR codes and barcodes.
+First release: Word Slate, Grid Slate, Deck Slate and Page Slate in one app. View, edit, save and print documents, spreadsheets, slides and PDFs; fill, sign and certificate-sign PDFs; make and read QR codes and barcodes.
