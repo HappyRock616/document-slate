@@ -1,0 +1,58 @@
+[package]
+name = "slate-pdf"
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+description = "Page Slate's PDF back-end: a small, UI-free wrapper around the PdfCraft engine"
+publish = false
+
+# This crate is its own workspace, so it builds on its own with its own target dir and lock file.
+# (Cargo.lock started as a copy of PageSlate/Cargo.lock so we get the exact versions upstream tests.)
+[workspace]
+
+[lib]
+# rlib: the Document Slate app links it as a normal Rust library.
+crate-type = ["rlib"]
+
+[dependencies]
+# The PdfCraft engine façade (documents, undo history, every edit, incremental save).
+# Path dependency: we never edit anything under PageSlate/.
+pdfcraft-engine = { path = "../../../PageSlate/crates/engine" }
+# The renderer, for page pictures and the text layer (the engine re-exports most other types).
+pdfcraft-render = { path = "../../../PageSlate/crates/render" }
+
+[dev-dependencies]
+
+# Upstream PdfCraft patches a few PDF crates with fixed copies in PageSlate/vendor/. Patches only
+# apply from the top-level workspace, so we must repeat them here or the engine won't compile the
+# same way. These are PDF parsing/drawing crates, NOT the egui/winit window stack.
+[patch.crates-io]
+hayro-interpret = { path = "../../../PageSlate/vendor/hayro-interpret" }
+hayro = { path = "../../../PageSlate/vendor/hayro" }
+hayro-syntax = { path = "../../../PageSlate/vendor/hayro-syntax" }
+hayro-cmap = { path = "../../../PageSlate/vendor/hayro-cmap" }
+hayro-postscript = { path = "../../../PageSlate/vendor/hayro-postscript" }
+hayro-jbig2 = { path = "../../../PageSlate/vendor/hayro-jbig2" }
+lopdf = { path = "../../../PageSlate/vendor/lopdf" }
+vello_common = { path = "../../../PageSlate/vendor/vello_common" }
+vello_cpu = { path = "../../../PageSlate/vendor/vello_cpu" }
+
+[profile.dev.package."*"]
+opt-level = 2
+debug = false
+
+[profile.dev]
+opt-level = 1
+debug = "line-tables-only"
+
+# Same idea as the app's size profile: small arm64 library.
+[profile.release]
+opt-level = "z"
+lto = "fat"
+codegen-units = 1
+strip = true
+
+# Not part of the library: a shared-library build used only to measure the release size.
+[[example]]
+name = "size_probe"
+crate-type = ["cdylib"]

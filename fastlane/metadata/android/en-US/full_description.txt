@@ -1,0 +1,22 @@
+Document Slate is a free office suite for Android that respects your privacy. No ads, no tracking, no accounts and no built-in AI. The app has no internet permission at all: your files never leave your phone.
+
+One app, four tools:
+
+* Word Slate: documents (DOCX, ODT, RTF, TXT; opens DOC)
+* Grid Slate: spreadsheets (XLSX, XLS, XLSB, ODS, CSV)
+* Deck Slate: presentations (PPTX, PPSX) with slideshow
+* Page Slate: PDF viewing, comments, forms, fill and sign, page tools
+
+Features:
+
+* Files open in a fast viewer; editing loads only when you tap Edit
+* Touch-friendly edit tabs for text, paragraphs, cells, formulas, slides and shapes
+* Spelling check with offline dictionaries
+* Print to printers on your local network through Android's print system
+* Save, Save as and export to PDF
+* Full-fidelity guard: the app never silently drops pictures, charts or other content when it saves
+* Certificate signatures for PDFs, with keys kept in the Android Keystore
+* Create QR codes and barcodes, and tap codes and links in documents to read or open them
+* Dark and light themes
+
+Document Slate is built on the open-source ArtCraft document engines (MIT OR Apache-2.0). It is not affiliated with ArtCraft.

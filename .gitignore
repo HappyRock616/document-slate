@@ -1,0 +1,31 @@
+# --- Private / local only: never commit ---
+CLAUDE.md
+CLAUDE-history.md
+.claude/
+_cleanup/
+_to_delete/
+**/local.properties
+**/local.env
+*.jks
+*.keystore
+Keys/
+**/keystore.properties*
+
+# --- Build output ---
+target/
+target-*/
+DocumentSlate/android/.gradle/
+DocumentSlate/android/build/
+DocumentSlate/android/app/build/
+DocumentSlate/android/app/src/main/jniLibs/
+DocumentSlate/android/release-jniLibs/
+*.apk
+*.aab
+
+# --- Editor / OS ---
+.idea/
+.vscode/
+*.iml
+Thumbs.db
+.DS_Store
+__pycache__/

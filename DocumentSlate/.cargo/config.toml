@@ -1,0 +1,6 @@
+# Spelling dictionaries: craft-proof (upstream WordCraft's proofing) embeds the word lists from a
+# craft-i18n checkout at build time. ../craft-i18n is a shallow clone of storytold/craft-i18n at
+# the commit pinned in ../WordSlate/craft-i18n.rev. Without it, spelling falls back to a small
+# built-in English list.
+[env]
+CRAFT_I18N_DIR = { value = "../craft-i18n", relative = true }

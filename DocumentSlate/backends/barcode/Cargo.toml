@@ -1,0 +1,40 @@
+# slate-barcode: barcode and QR code back-end for Document Slate.
+#
+# Makes barcodes (QR, Data Matrix, Aztec, PDF417, Code 128, Code 39, EAN-13, UPC-A) as a
+# module grid, PNG or SVG, and finds/reads every barcode in a picture (for example a rendered
+# page). Wraps the `rxing` crate (a Rust port of ZXing). No UI code here: no egui, no Android.
+[package]
+name = "slate-barcode"
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+description = "Document Slate barcode back-end: make and read QR codes and barcodes (wraps rxing)"
+publish = false
+
+# An empty workspace table makes this crate its own workspace root, so it never joins the
+# DocumentSlate app workspace by accident.
+[workspace]
+
+[dependencies]
+# ZXing port. Default features pull in chrono-tz, regexes for result parsing, rayon, serde and
+# a dozen image formats — none needed. We keep: encoders + decoders, all symbologies, the
+# multi-code reader, and `encoding_rs` (required: without it rxing refuses to build unless
+# character-set support is switched off, and that support is what gives us UTF-8 / ECI).
+rxing = { version = "0.9.4", default-features = false, features = [
+    "encoders",
+    "decoders",
+    "full_barcode_format_support",
+    "multi_barcode_readers",
+    "encoding_rs",
+] }
+# Writing PNGs (small, pure Rust, already in the app's dependency tree via image).
+png = "0.18"
+# Reading PNG/JPEG bytes for `decode_image_bytes` (same version line the other back-ends use,
+# so it costs nothing extra once linked into the app).
+image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }
+
+[profile.release]
+opt-level = 3
+lto = "thin"
+codegen-units = 16
+debug = 0

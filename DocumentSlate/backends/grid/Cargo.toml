@@ -1,0 +1,36 @@
+# slate-grid: the spreadsheet engine back-end for Grid Slate (part of Document Slate).
+#
+# It wraps upstream GridCraft's engine crates (in ../../../GridSlate, kept pristine) behind a
+# small API the Android app calls. No UI code here: no egui, eframe or winit.
+[package]
+name = "slate-grid"
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+description = "Grid Slate spreadsheet back-end: open, view model, edit, save, PDF export (wraps GridCraft's engine)"
+publish = false
+
+# An empty workspace table makes this crate its own workspace root, so it never joins the
+# DocumentSlate app workspace or GridSlate's workspace by accident.
+[workspace]
+
+[dependencies]
+# The engine façade: sessions, commands (`cell.set`, `home.bold`, ...), undo/redo, file I/O,
+# printing to PDF. It re-exports core/model/calc/numfmt, so those need no entries here.
+gridcraft-engine = { path = "../../../GridSlate/crates/engine" }
+# The chart crate draws a chart as simple shapes (rectangles, lines, wedges, text) the app paints.
+gridcraft-chart = { path = "../../../GridSlate/crates/chart" }
+# File sniffing (is it xlsx / ods / xls / encrypted?). Already a dependency of the engine.
+gridcraft-xlsx = { path = "../../../GridSlate/crates/xlsx" }
+# The engine speaks JSON for command parameters and results.
+serde_json = { version = "1", features = ["float_roundtrip"] }
+# Reading the original .xlsx package to check nothing is lost on save (same version as upstream).
+zip = { version = "3", default-features = false, features = ["deflate"] }
+# Decoding floating pictures for the viewer (same version and features the engine already uses).
+image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }
+
+[profile.release]
+opt-level = 3
+lto = "thin"
+codegen-units = 16
+debug = 0

@@ -1,0 +1,16 @@
+[submodule "WordSlate"]
+	path = WordSlate
+	url = https://github.com/storytold/wordcraft.git
+[submodule "GridSlate"]
+	path = GridSlate
+	url = https://github.com/storytold/gridcraft.git
+[submodule "DeckSlate"]
+	path = DeckSlate
+	url = https://github.com/storytold/deckcraft.git
+[submodule "PageSlate"]
+	path = PageSlate
+	url = https://github.com/storytold/printcraft.git
+[submodule "craft-i18n"]
+	path = craft-i18n
+	url = https://github.com/storytold/craft-i18n.git
+	shallow = true

@@ -1,0 +1,118 @@
+[package]
+name = "document_slate"
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+publish = false
+
+# Android loads the app as a shared library (libdocument_slate.so);
+# "rlib" lets the desktop binary in src/main.rs reuse the same code.
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+# Desktop launcher gets its own name so its debug files don't collide with the library's.
+[[bin]]
+name = "document-slate-desktop"
+path = "src/main.rs"
+
+[features]
+# All four apps by default. Build one alone: cargo build --no-default-features --features deck
+default = ["deck", "grid", "pdf"]
+deck = ["dep:slate-deck"]
+grid = ["dep:slate-grid"]
+pdf = ["dep:slate-pdf"]
+
+[dependencies]
+zip = { version = "9.6", default-features = false } # read package part names (fidelity guard); already in the tree via the engine
+lopdf = { version = "0.45", default-features = false } # scrub upstream names from PDF metadata (src/rebrand.rs); patched to PageSlate/vendor
+# Same egui version as the upstream WordCraft/GridCraft/DeckCraft repos.
+# wgpu = the GPU renderer upstream uses; glow (OpenGL ES) kept as a fallback.
+eframe = { version = "0.37", default-features = false, features = ["default_fonts", "wgpu", "glow"] }
+log = "0.4"
+# Direct egui dependency (same version eframe uses) for code copied from upstream (src/icons.rs).
+egui = { version = "0.37", default-features = false }
+
+# Upstream WordCraft engine (the WordSlate/ clone): open, lay out and draw Word documents.
+wordcraft-engine = { path = "../WordSlate/crates/engine" }
+wordcraft-render = { path = "../WordSlate/crates/render" }
+wordcraft-doc = { path = "../WordSlate/crates/doc" }
+wordcraft-fonts = { path = "../WordSlate/crates/fonts" }
+# The other three apps' engines, each behind a feature so one can be built/tested without the others.
+slate-deck = { path = "backends/deck", optional = true } # presentations (DeckCraft engine)
+slate-grid = { path = "backends/grid", optional = true } # spreadsheets (GridCraft engine)
+slate-pdf = { path = "backends/pdf", optional = true }   # PDF (PdfCraft engine)
+slate-barcode = { path = "backends/barcode" }              # barcodes: make and read QR, Data Matrix, Aztec, PDF417, 1D (rxing)
+serde_json = "1"
+serde = { version = "1", features = ["derive"] }
+
+[target.'cfg(target_os = "android")'.dependencies]
+# GameActivity (not NativeActivity): gives the on-screen keyboard a real text connection,
+# so suggestions/autocorrect/swipe typing work. Java side: android/app/src/main/java/.../MainActivity.java
+eframe = { version = "0.37", default-features = false, features = ["android-game-activity"] }
+android_logger = "0.15"
+# Needed for AndroidApp (keyboard state) — same winit version eframe uses.
+winit = { version = "0.30", default-features = false, features = ["android-game-activity"] }
+# Calls from Rust into Java (MainActivity.printPdf).
+jni = "0.21"
+
+[target.'cfg(not(target_os = "android"))'.dependencies]
+eframe = { version = "0.37", default-features = false, features = ["x11", "wayland"] }
+env_logger = "0.11"
+
+# Copied from WordSlate/Cargo.toml: upstream's forks, so we build against the same versions.
+# - krilla: PDF writer used by the engine's PDF export.
+# - egui family + winit: crates.io epaint 0.37 rasterises glyphs without vello_cpu's flush(),
+#   which panics ("attempted to rasterize before flushing") once wordcraft-render turns on
+#   vello_cpu's multithreading feature. Upstream's fork is what WordCraft itself ships with.
+[patch.crates-io]
+# PdfCraft (PDF app) patches a few PDF crates with fixed copies in PageSlate/vendor/ (these vello
+# copies are the old 0.0.x versions hayro uses; egui's/WordCraft's vello 0.2 is not affected).
+hayro-interpret = { path = "../PageSlate/vendor/hayro-interpret" }
+hayro = { path = "../PageSlate/vendor/hayro" }
+hayro-syntax = { path = "../PageSlate/vendor/hayro-syntax" }
+hayro-cmap = { path = "../PageSlate/vendor/hayro-cmap" }
+hayro-postscript = { path = "../PageSlate/vendor/hayro-postscript" }
+hayro-jbig2 = { path = "../PageSlate/vendor/hayro-jbig2" }
+lopdf = { path = "../PageSlate/vendor/lopdf" }
+vello_common = { path = "../PageSlate/vendor/vello_common" }
+vello_cpu = { path = "../PageSlate/vendor/vello_cpu" }
+krilla = { git = "https://github.com/storytold/craft-libs", rev = "6e03f65bf45181db77ba6229716e6624db9eb25b" }
+ecolor = { git = "https://github.com/storytold/egui.git", rev = "6d518fc799681571963842f95b55a6b68431b15a" }
+emath = { git = "https://github.com/storytold/egui.git", rev = "6d518fc799681571963842f95b55a6b68431b15a" }
+epaint = { git = "https://github.com/storytold/egui.git", rev = "6d518fc799681571963842f95b55a6b68431b15a" }
+epaint_default_fonts = { git = "https://github.com/storytold/egui.git", rev = "6d518fc799681571963842f95b55a6b68431b15a" }
+egui = { git = "https://github.com/storytold/egui.git", rev = "6d518fc799681571963842f95b55a6b68431b15a" }
+egui-winit = { git = "https://github.com/storytold/egui.git", rev = "6d518fc799681571963842f95b55a6b68431b15a" }
+egui-wgpu = { git = "https://github.com/storytold/egui.git", rev = "6d518fc799681571963842f95b55a6b68431b15a" }
+egui_glow = { git = "https://github.com/storytold/egui.git", rev = "6d518fc799681571963842f95b55a6b68431b15a" }
+eframe = { git = "https://github.com/storytold/egui.git", rev = "6d518fc799681571963842f95b55a6b68431b15a" }
+winit = { git = "https://github.com/storytold/winit.git", rev = "a517b3846ee8457d84ee4975110bfda6797c44dc" }
+
+# Disk use: full debug info made each desktop test build ~0.75 GB, and Cargo keeps old copies
+# (the target folder reached ~120 GB). Line numbers for our own code are enough for backtraces;
+# dependencies get no debug info.
+[profile.dev]
+debug = "line-tables-only"
+
+[profile.dev.package."*"]
+debug = false
+
+[profile.release]
+strip = true
+lto = "thin"
+
+# Small build for the phone APK (build-release.ps1). Slower to compile, much smaller .so.
+# Inherits everything from [profile.release] above, then overrides:
+#   opt-level "z"     optimise for size instead of speed (measured: "z" 43.3 MB, "s" 47.4 MB .so)
+#   lto "fat"         whole-program link-time optimisation: drops unused code across all crates
+#   codegen-units 1   compile each crate as one unit so LLVM can optimise (and shrink) it as a whole
+#   panic "unwind"    kept on purpose: the engine catches panics (Session::run turns a crashing
+#                     command into an error instead of killing the app; the font loader does the
+#                     same for damaged web fonts). "abort" would save ~6 MB (.so 37.5 MB) but lose that safety net.
+[profile.release-small]
+inherits = "release"
+opt-level = "z"
+lto = "fat"
+codegen-units = 1
+panic = "unwind"
+strip = true

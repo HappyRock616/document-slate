@@ -1,0 +1,3 @@
+# Same style as the DocumentSlate app (../../rustfmt.toml).
+max_width = 150
+use_small_heuristics = "Max"

@@ -1,0 +1,3 @@
+# Share the app's build folder instead of making a separate backends/pdf/target (disk use).
+[build]
+target-dir = "../../target"
