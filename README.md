@@ -1,5 +1,7 @@
 # Document Slate
 
+![Document Slate: an office suite for Android. Free, no ads, no tracking, no AI.](DocumentSlate/docs/images/hero.png)
+
 A privacy-respecting office suite for Android: **free, no ads, no telemetry, no built-in AI.**
 
 One app, four tools:
@@ -20,6 +22,8 @@ EAN-13 and UPC-A codes.
 
 Status: **0.1.0**, first release. Download the signed APK from [Releases](https://github.com/HappyRock616/document-slate/releases).
 Planned: F-Droid and Play Store.
+
+![Start screen, Word Slate, Grid Slate, Deck Slate and Page Slate](DocumentSlate/docs/images/gallery.png)
 
 ## Repository layout
 
