@@ -10,6 +10,7 @@ One app, four tools:
 Features:
 
 * Files open in a fast viewer; editing loads only when you tap Edit
+* Folder tabs for Recent, Downloads, Documents, Pictures and more
 * Touch-friendly edit tabs for text, paragraphs, cells, formulas, slides and shapes
 * Spelling check with offline dictionaries
 * Print to printers on your local network through Android's print system

@@ -1,6 +1,6 @@
 # Document Slate: Privacy Policy
 
-*Effective date: November 19, 2026*
+*Effective date: November 20, 2026*
 
 Document Slate is a free office suite for Android (documents, spreadsheets, slides and PDFs).
 It has no ads, no analytics, no accounts and no AI features.
@@ -45,6 +45,13 @@ Android's own fingerprint / face / PIN prompt before your digital ID signs a doc
 never sees your fingerprint, face or PIN; Android only tells it "confirmed" or "cancelled".
 It has no internet permission. File and photo access goes through Android's system pickers,
 which give the app access only to the items you select.
+
+The version from GitHub and F-Droid can also ask for "All files access" (optional, off until
+you turn it on in Android's settings). With it, the folder tabs list the documents in your
+phone's shared folders (Download, Documents, Pictures, DCIM, Movies, Music) inside the app, and
+files open and save in place. The app reads those folders only while their list is on screen;
+it never reads other apps' private data and never scans in the background. The Google Play
+version does not have this permission.
 
 ## Children
 
