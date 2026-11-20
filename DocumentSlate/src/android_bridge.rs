@@ -92,6 +92,37 @@ pub fn is_picker_open(app: &AndroidApp) -> Result<bool, String> {
     with_activity(app, |env, act| env.call_method(act, "isPickerOpen", "()Z", &[])?.z())
 }
 
+/// `MainActivity.hasAllFilesFlavor()`: the "full" build on Android 11+ (may list folders itself).
+pub fn has_all_files_flavor(app: &AndroidApp) -> Result<bool, String> {
+    with_activity(app, |env, act| env.call_method(act, "hasAllFilesFlavor", "()Z", &[])?.z())
+}
+
+/// `MainActivity.hasAllFilesAccess()`: "All files access" is on (Java re-checks on resume).
+pub fn has_all_files_access(app: &AndroidApp) -> Result<bool, String> {
+    with_activity(app, |env, act| env.call_method(act, "hasAllFilesAccess", "()Z", &[])?.z())
+}
+
+/// `MainActivity.openAllFilesSettings()`: Android's "All files access" switch for this app.
+pub fn open_all_files_settings(app: &AndroidApp) -> Result<(), String> {
+    with_activity(app, |env, act| {
+        env.call_method(act, "openAllFilesSettings", "()V", &[])?;
+        Ok(())
+    })
+}
+
+/// Save by file path ("full" flavor): scrub `source`, write it over `dest` by way of a hidden
+/// copy ([`crate::browse::replace_file`]), and let Android's media index know.
+pub fn write_path(app: &AndroidApp, dest: &str, source: &Path) -> Result<(), String> {
+    crate::rebrand::scrub_file(source); // no upstream app names in files leaving the app
+    crate::browse::replace_file(Path::new(dest), source)?;
+    let _ = with_activity(app, |env, act| {
+        let p = env.new_string(dest)?;
+        env.call_method(act, "scanFile", "(Ljava/lang/String;)V", &[(&p).into()])?;
+        Ok(())
+    });
+    Ok(())
+}
+
 pub enum SaveResult {
     Saved { uri: String, name: String },
     Cancelled,

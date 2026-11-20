@@ -21,16 +21,28 @@ pub enum HomeAction {
     OpenApp(Tool),
     /// "New Word Slate": a blank document.
     NewDocument,
-    /// The file picker, starting in a common folder.
-    OpenPickerAt(Folder),
+    /// A folder tab was tapped: its list in the app (full build with access), the access card,
+    /// or the file picker starting in that folder.
+    FolderTab(Folder),
+    /// Access card: open Android's "All files access" switch.
+    AllowAccess,
+    /// Access card: use the file picker instead (this run).
+    UsePicker,
+    /// A file in a folder list (full build): open it by path.
+    OpenPath(String),
+    /// A subfolder in a folder list: go into it.
+    EnterFolder(String),
+    /// The back arrow on a folder list's path row: up one folder.
+    FolderUp,
     /// From an app's screen back to the suite's start screen.
     BackToSuite,
     /// The Recent tab was tapped.
     ShowRecent,
 }
 
-/// The phone folders behind the folder tabs. Each tab opens Android's file picker in that
-/// folder (the app has no permission to list folders itself, by design).
+/// The phone folders behind the folder tabs. In the Play build each tab opens Android's file
+/// picker in that folder (no permission to list folders); the full build lists them in the app
+/// once "All files access" is on (`browse.rs`).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Folder {
     Downloads,
@@ -73,8 +85,8 @@ impl Folder {
     }
 }
 
-/// The folder tab that is lit: Recent (its list shows below the tabs) or a folder whose picker
-/// is open.
+/// The folder tab that is lit: Recent (its list shows below the tabs), a folder whose list shows
+/// below the tabs (full build), or a folder whose picker is open.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum HomeTab {
     Recent,
@@ -99,8 +111,17 @@ pub fn tool_for(name: &str) -> Tool {
     }
 }
 
+/// What shows under the folder tabs.
+pub enum Below<'a> {
+    Recent,
+    /// Full build without "All files access" yet: the card asking for it.
+    AccessCard,
+    /// A folder's list (full build): the tab, subfolders entered, and the rows.
+    Folder { folder: Folder, sub: &'a [String], entries: &'a [crate::browse::Entry], loading: bool, error: Option<&'a str> },
+}
+
 /// Extensions the Word engine reads by name (anything else it reads by content).
-const WORD_EXTS: &[&str] = &[
+pub const WORD_EXTS: &[&str] = &[
     "docx", "docm", "dotx", "dotm", "doc", "dot", "odt", "ott", "fodt", "rtf", "txt", "text", "md", "markdown",
     "html", "htm", "xhtml", "mht", "mhtml", "xml", "tex", "latex", "ltx",
 ];
@@ -134,7 +155,7 @@ fn badge_letter(tool: Tool) -> &'static str {
     }
 }
 
-pub fn show(ui: &mut egui::Ui, settings: &Settings, mode: Mode, top_inset: f32, tab: HomeTab) -> Option<HomeAction> {
+pub fn show(ui: &mut egui::Ui, settings: &Settings, mode: Mode, top_inset: f32, tab: HomeTab, below: Below) -> Option<HomeAction> {
     let mut action = None;
     let p = mode.palette();
 
@@ -207,25 +228,9 @@ pub fn show(ui: &mut egui::Ui, settings: &Settings, mode: Mode, top_inset: f32, 
                     action = Some(a);
                 }
                 ui.add_space(10.0);
-                if !settings.keep_recent {
-                    ui.label(RichText::new("Recent is turned off in Preferences.").weak());
-                    return;
+                if let Some(a) = below_tabs(ui, below, settings, None, p.text, width, &p) {
+                    action = Some(a);
                 }
-                if settings.recent.is_empty() {
-                    ui.label(RichText::new("Documents you open will appear here.").weak());
-                }
-
-                egui::ScrollArea::vertical()
-                    .auto_shrink([false, true])
-                    .max_height(ui.available_height().max(120.0))
-                    .show(ui, |ui| {
-                        for r in &settings.recent {
-                            if let Some(a) = recent_row(ui, r, width, &p) {
-                                action = Some(a);
-                            }
-                        }
-                    });
-
             });
         });
     });
@@ -235,7 +240,7 @@ pub fn show(ui: &mut egui::Ui, settings: &Settings, mode: Mode, top_inset: f32, 
 /// One app's own screen (e.g. Word Slate): the app banner (its symbol, boxed as a button that
 /// opens a menu of file places, and the name), a "New Word Slate" bar, and Recent files of the
 /// types this app opens.
-pub fn app_home(ui: &mut egui::Ui, tool: Tool, settings: &Settings, mode: Mode, top_inset: f32, tab: HomeTab) -> Option<HomeAction> {
+pub fn app_home(ui: &mut egui::Ui, tool: Tool, settings: &Settings, mode: Mode, top_inset: f32, tab: HomeTab, below: Below) -> Option<HomeAction> {
     let mut action = None;
     let p = mode.palette();
     let accent = tool.accent();
@@ -300,21 +305,9 @@ pub fn app_home(ui: &mut egui::Ui, tool: Tool, settings: &Settings, mode: Mode, 
                     action = Some(a);
                 }
                 ui.add_space(10.0);
-                if !settings.keep_recent {
-                    ui.label(RichText::new("Recent is turned off in Preferences.").weak());
-                    return;
+                if let Some(a) = below_tabs(ui, below, settings, Some(tool), accent, width, &p) {
+                    action = Some(a);
                 }
-                let mine: Vec<&settings::Recent> = settings.recent.iter().filter(|r| belongs(tool, &r.name)).collect();
-                if mine.is_empty() {
-                    ui.label(RichText::new(format!("{} you open will appear here.", tool.blurb().split(" \u{b7} ").next().unwrap_or("Files"))).weak());
-                }
-                egui::ScrollArea::vertical().auto_shrink([false, true]).show(ui, |ui| {
-                    for r in mine {
-                        if let Some(a) = recent_row(ui, r, width, &p) {
-                            action = Some(a);
-                        }
-                    }
-                });
             });
         });
     });
@@ -402,7 +395,7 @@ fn folder_tabs(ui: &mut egui::Ui, selected: HomeTab, highlight: egui::Color32, w
                     if clicked {
                         action = Some(match tab {
                             HomeTab::Recent => HomeAction::ShowRecent,
-                            HomeTab::Folder(f) => HomeAction::OpenPickerAt(f),
+                            HomeTab::Folder(f) => HomeAction::FolderTab(f),
                         });
                     }
                 }
@@ -567,6 +560,207 @@ fn outlined_text(painter: &egui::Painter, pos: egui::Pos2, text: &str, font: egu
         painter.text(pos + egui::vec2(a.cos() * w, a.sin() * w), egui::Align2::LEFT_CENTER, text, font.clone(), outline);
     }
     painter.text(pos, egui::Align2::LEFT_CENTER, text, font, fill);
+}
+
+/// Under the folder tabs: Recent, the access card, or a folder's list. `only`: an app's screen
+/// (just that app's files in Recent; folder lists are already filtered).
+fn below_tabs(ui: &mut egui::Ui, below: Below, settings: &Settings, only: Option<Tool>, highlight: egui::Color32, width: f32, p: &theme::Palette) -> Option<HomeAction> {
+    match below {
+        Below::Recent => recent_list(ui, settings, only, width, p),
+        Below::AccessCard => access_card(ui, only.unwrap_or(Tool::Word).accent(), width, p),
+        Below::Folder { folder, sub, entries, loading, error } => folder_list(ui, folder, sub, entries, loading, error, highlight, width, p),
+    }
+}
+
+fn recent_list(ui: &mut egui::Ui, settings: &Settings, only: Option<Tool>, width: f32, p: &theme::Palette) -> Option<HomeAction> {
+    if !settings.keep_recent {
+        ui.label(RichText::new("Recent is turned off in Preferences.").weak());
+        return None;
+    }
+    let mine: Vec<&settings::Recent> = settings.recent.iter().filter(|r| only.is_none_or(|t| belongs(t, &r.name))).collect();
+    if mine.is_empty() {
+        let hint = match only {
+            Some(tool) => format!("{} you open will appear here.", tool.blurb().split(" \u{b7} ").next().unwrap_or("Files")),
+            None => "Documents you open will appear here.".to_owned(),
+        };
+        ui.label(RichText::new(hint).weak());
+    }
+    let mut action = None;
+    egui::ScrollArea::vertical().auto_shrink([false, true]).max_height(ui.available_height().max(120.0)).show(ui, |ui| {
+        for r in mine {
+            if let Some(a) = recent_row(ui, r, width, p) {
+                action = Some(a);
+            }
+        }
+    });
+    action
+}
+
+/// Full build without "All files access": what it is for, the way to Android's switch, and the
+/// picker as the alternative.
+fn access_card(ui: &mut egui::Ui, accent: egui::Color32, width: f32, p: &theme::Palette) -> Option<HomeAction> {
+    let mut action = None;
+    egui::Frame::new()
+        .fill(p.surface)
+        .corner_radius(14.0)
+        .stroke(egui::Stroke::new(2.0, accent))
+        .inner_margin(16)
+        .show(ui, |ui| {
+            ui.set_width(width - 36.0); // inner margins + the 2 px edge
+            ui.label(RichText::new("Allow access to your folders").font(theme::brand_font(19.0)).color(p.text));
+            ui.add_space(8.0);
+            ui.label(
+                RichText::new(
+                    "Document Slate can list Downloads, Documents and your other folders right here, and save documents back where they are. \
+                     Android asks you to turn on \u{201c}All files access\u{201d} for this.",
+                )
+                .size(14.0)
+                .color(p.text),
+            );
+            ui.add_space(6.0);
+            ui.label(RichText::new("Your files stay on your phone: the app has no internet access.").size(13.0).color(p.text.gamma_multiply(0.7)));
+            ui.add_space(14.0);
+            if card_button(ui, "Allow access", true, accent, width - 36.0, p) {
+                action = Some(HomeAction::AllowAccess);
+            }
+            ui.add_space(8.0);
+            if card_button(ui, "Use Android's picker instead", false, accent, width - 36.0, p) {
+                action = Some(HomeAction::UsePicker);
+            }
+        });
+    action
+}
+
+/// A wide button on the access card: filled in the accent, or outlined.
+fn card_button(ui: &mut egui::Ui, text: &str, filled: bool, accent: egui::Color32, width: f32, p: &theme::Palette) -> bool {
+    let (rect, resp) = ui.allocate_exact_size(egui::vec2(width, 48.0), egui::Sense::click());
+    let down = resp.is_pointer_button_down_on();
+    let painter = ui.painter();
+    if filled {
+        painter.rect_filled(rect, 10.0, if down { accent.gamma_multiply(0.85) } else { accent });
+        painter.text(rect.center(), egui::Align2::CENTER_CENTER, text, egui::FontId::proportional(16.0), theme::ON_ACCENT);
+    } else {
+        painter.rect_filled(rect, 10.0, if down { p.control } else { p.surface });
+        painter.rect_stroke(rect, 10.0, egui::Stroke::new(1.0, p.text.gamma_multiply(0.3)), egui::StrokeKind::Inside);
+        painter.text(rect.center(), egui::Align2::CENTER_CENTER, text, egui::FontId::proportional(15.0), p.text);
+    }
+    resp.clicked()
+}
+
+/// A folder's list: a path row (back arrow once inside a subfolder), then subfolders and files.
+#[allow(clippy::too_many_arguments)]
+fn folder_list(
+    ui: &mut egui::Ui,
+    folder: Folder,
+    sub: &[String],
+    entries: &[crate::browse::Entry],
+    loading: bool,
+    error: Option<&str>,
+    highlight: egui::Color32,
+    width: f32,
+    p: &theme::Palette,
+) -> Option<HomeAction> {
+    let mut action = None;
+    if !sub.is_empty() {
+        let (rect, resp) = ui.allocate_exact_size(egui::vec2(width, 40.0), egui::Sense::click());
+        let painter = ui.painter();
+        if resp.is_pointer_button_down_on() {
+            painter.rect_filled(rect, 8.0, p.control);
+        }
+        // Back arrow, then "Downloads › Work › 2026" (the start cut off if it's long).
+        let c = rect.left_center() + egui::vec2(18.0, 0.0);
+        let s = egui::Stroke::new(2.4, highlight);
+        painter.line_segment([c + egui::vec2(-7.0, 0.0), c + egui::vec2(7.0, 0.0)], s);
+        painter.add(egui::Shape::line(vec![c + egui::vec2(-1.0, -6.0), c + egui::vec2(-7.0, 0.0), c + egui::vec2(-1.0, 6.0)], s));
+        let mut trail: Vec<&str> = vec![folder.label()];
+        trail.extend(sub.iter().map(String::as_str));
+        let full = trail.join("  \u{203a}  ");
+        let font = egui::FontId::proportional(14.5);
+        let avail = width - 44.0;
+        let mut shown = full.clone();
+        while painter.layout_no_wrap(shown.clone(), font.clone(), p.text).size().x > avail && shown.chars().count() > 2 {
+            shown = format!("\u{2026}{}", shown.chars().skip(2).collect::<String>());
+        }
+        painter.text(egui::pos2(rect.left() + 36.0, rect.center().y), egui::Align2::LEFT_CENTER, shown, font, p.text);
+        if resp.clicked() {
+            action = Some(HomeAction::FolderUp);
+        }
+        ui.add_space(4.0);
+    }
+    if let Some(e) = error {
+        ui.label(RichText::new(format!("Couldn't list this folder: {e}")).weak());
+        return action;
+    }
+    if entries.is_empty() {
+        let msg = if loading { "Loading\u{2026}" } else { "No folders or documents here." };
+        ui.label(RichText::new(msg).weak());
+        return action;
+    }
+    egui::ScrollArea::vertical().id_salt(("folder_list", folder.label(), sub.len())).auto_shrink([false, true]).max_height(ui.available_height().max(120.0)).show(ui, |ui| {
+        for e in entries {
+            if let Some(a) = entry_row(ui, e, width, p) {
+                action = Some(a);
+            }
+        }
+    });
+    action
+}
+
+/// One row of a folder list, styled like a Recent row: a folder symbol or the app's badge, the
+/// name, when it last changed (and the size for files).
+fn entry_row(ui: &mut egui::Ui, e: &crate::browse::Entry, width: f32, p: &theme::Palette) -> Option<HomeAction> {
+    let (rect, resp) = ui.allocate_exact_size(egui::vec2(width, 60.0), egui::Sense::click());
+    let painter = ui.painter();
+    let fill = if resp.hovered() || resp.is_pointer_button_down_on() { p.control } else { p.surface };
+    painter.rect_filled(rect.shrink2(egui::vec2(0.0, 2.0)), 8.0, fill);
+
+    let badge = egui::Rect::from_center_size(rect.left_center() + egui::vec2(30.0, 0.0), egui::vec2(36.0, 36.0));
+    if e.is_dir {
+        painter.rect_filled(badge, 6.0, p.control);
+        painter.rect_stroke(badge, 6.0, egui::Stroke::new(1.0, p.text.gamma_multiply(0.25)), egui::StrokeKind::Inside);
+        let c = badge.center();
+        let s = egui::Stroke::new(1.8, p.text.gamma_multiply(0.85));
+        let body = egui::Rect::from_min_max(c + egui::vec2(-10.0, -5.0), c + egui::vec2(10.0, 8.0));
+        painter.rect_stroke(body, 2.0, s, egui::StrokeKind::Middle);
+        painter.add(egui::Shape::line(vec![c + egui::vec2(-9.0, -5.0), c + egui::vec2(-8.0, -8.5), c + egui::vec2(-2.0, -8.5), c + egui::vec2(0.5, -5.0)], s));
+    } else {
+        let tool = tool_for(&e.name);
+        painter.rect_filled(badge, 6.0, tool.accent());
+        painter.text(badge.center(), egui::Align2::CENTER_CENTER, badge_letter(tool), egui::FontId::proportional(18.0), theme::ON_ACCENT);
+    }
+
+    let x = badge.right() + 14.0;
+    let max_w = rect.right() - x - 10.0;
+    let name = one_line(painter, &e.name, egui::FontId::proportional(16.0), p.text, max_w);
+    painter.galley(egui::pos2(x, rect.center().y - 10.0 - name.size().y / 2.0), name, p.text);
+    let when = if e.modified > 0 { settings::ago(e.modified) } else { String::new() };
+    let sub = if e.is_dir {
+        if when.is_empty() { "Folder".to_owned() } else { format!("Folder \u{b7} changed {when}") }
+    } else {
+        format!("{} \u{b7} changed {when}", human_size(e.size))
+    };
+    painter.text(egui::pos2(x, rect.center().y + 12.0), egui::Align2::LEFT_CENTER, sub, egui::FontId::proportional(13.0), p.text.gamma_multiply(0.6));
+    if resp.clicked() {
+        let path = e.path.to_string_lossy().into_owned();
+        return Some(if e.is_dir { HomeAction::EnterFolder(e.name.clone()) } else { HomeAction::OpenPath(path) });
+    }
+    None
+}
+
+/// One line of text cut off with "…" when wider than `max_w`.
+fn one_line(painter: &egui::Painter, text: &str, font: egui::FontId, color: egui::Color32, max_w: f32) -> std::sync::Arc<egui::Galley> {
+    let mut job = egui::text::LayoutJob::simple_singleline(text.to_owned(), font, color);
+    job.wrap = egui::text::TextWrapping { max_width: max_w.max(10.0), max_rows: 1, break_anywhere: true, overflow_character: Some('\u{2026}') };
+    painter.layout_job(job)
+}
+
+/// "820 KB", "3.4 MB".
+fn human_size(bytes: u64) -> String {
+    match bytes {
+        0..=1023 => format!("{bytes} B"),
+        1024..=1_048_575 => format!("{} KB", bytes / 1024),
+        _ => format!("{:.1} MB", bytes as f64 / 1_048_576.0),
+    }
 }
 
 /// One Recent entry: coloured badge, name, "opened 5 min ago". Tap opens; long-press offers removal.

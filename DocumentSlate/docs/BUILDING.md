@@ -39,7 +39,7 @@ Without `craft-i18n/`, spelling still works but falls back to a small built-in E
 .\build-android.ps1 -Install   # also install and start it on the connected device
 ```
 
-Result: `android\app\build\outputs\apk\debug\app-debug.apk`.
+Result: `android\app\build\outputs\apk\full\debug\app-full-debug.apk`.
 The first build downloads crates and Gradle parts and takes a while; later builds take about a minute.
 
 Desktop test window (no phone needed): `cargo run` opens the app in a phone-sized window.
@@ -47,13 +47,25 @@ Unit tests: `cargo test --lib`.
 
 ## 4. Release build
 
+Two build flavors (product flavors in `android/app/build.gradle.kts`):
+
+- **`full`** (default): GitHub, F-Droid, sideload. Declares `MANAGE_EXTERNAL_STORAGE` (in
+  `android/app/src/full/AndroidManifest.xml`). Once the user turns on "All files access", the
+  folder tabs list Download, Documents, Pictures, DCIM, Movies and Music inside the app, and those
+  files open and save in place by path. Until then a card offers the switch or the picker.
+- **`play`**: Google Play. No storage permission; the folder tabs open Android's file picker.
+
+The Rust library is the same for both: it asks Java (`hasAllFilesFlavor()`, from
+`BuildConfig.ALL_FILES`) at start.
+
 ```powershell
-.\build-release.ps1            # small arm64 APK for sideloading
-.\build-release.ps1 -Bundle    # also an .aab for the Play Store
+.\build-release.ps1                       # small arm64 APK, full flavor (GitHub / sideload)
+.\build-release.ps1 -Flavor play -Bundle  # Play flavor APK + .aab for the Play Store
 ```
 
 Uses the `release-small` Cargo profile (size-optimised, full LTO), so it takes several minutes.
-Output goes to `android\app\build\outputs\apk\release\` (and `bundle\release\`).
+Output goes to `android\app\build\outputs\apk\<flavor>\release\app-<flavor>-release.apk` (and
+`bundle\<flavor>Release\`).
 
 ## 5. Signing
 
@@ -71,7 +83,7 @@ for distribution.
    keyAlias=upload
    keyPassword=...
    ```
-3. Run `.\build-release.ps1 -Bundle`.
+3. Run `.\build-release.ps1` (or `-Flavor play -Bundle` for Play).
 4. Raise `versionCode` in `android\app\build.gradle.kts` for every release.
 
 Play Store details: [play-store.md](play-store.md).
@@ -80,7 +92,9 @@ Play Store details: [play-store.md](play-store.md).
 
 Turn on USB debugging on the phone, connect it, and check it shows in `adb devices`.
 
-- `dev/phone-test.sh [shot]` (Git Bash): arm64 debug build, install, start, optional screenshot.
+- `dev/phone-test.sh [shot]` (Git Bash): arm64 release build signed with the release key
+  (`full` flavor; `FLAVOR=play dev/phone-test.sh` for Play), install over the phone's copy,
+  start, optional screenshot.
   Put `PHONE=<serial from adb devices>` in `dev/local.env` (git-ignored).
 - `dev/emulator-test.sh [shot]`: the same for a running emulator.
 - Screenshots land in `../_cleanup/` (git-ignored).

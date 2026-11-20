@@ -10,6 +10,7 @@ use eframe::egui::{self, Color32};
 mod android_bridge;
 mod barcode_maker;
 mod barcode_scan;
+mod browse;
 #[cfg(target_os = "android")]
 mod android_ime;
 mod chrome;
@@ -85,6 +86,8 @@ pub struct SlateApp {
     app_home: Option<theme::Tool>,
     /// Which folder tab is lit under the app bars: Recent, or the folder whose picker is open.
     home_tab: home::HomeTab,
+    /// Full build: folder lists in the app ("All files access").
+    browse: browse::Browser,
     /// The next "save to" goes straight into Documents (first Save of a new document).
     save_new_to_documents: bool,
     /// The viewer bar's ⋮ menu is open (keeps the bar from auto-hiding under it).
@@ -166,6 +169,7 @@ impl SlateApp {
             other: None,
             app_home: None,
             home_tab: home::HomeTab::Recent,
+            browse: browse::Browser::default(),
             save_new_to_documents: false,
             bar_menu_open: false,
             prefs: prefs::Prefs::default(),
@@ -192,6 +196,8 @@ impl SlateApp {
         #[cfg(target_os = "android")]
         if let Some(app) = self.android.as_ref() {
             self.awaiting_launch_file = android_bridge::launched_with_file(app).unwrap_or(false);
+            self.browse.supported = android_bridge::has_all_files_flavor(app).unwrap_or(false);
+            self.browse.access = android_bridge::has_all_files_access(app).unwrap_or(false);
         }
     }
 
@@ -283,6 +289,49 @@ impl SlateApp {
         self.status.clear();
     }
 
+    /// A folder tab: its list in the app (full build), the access card, or the picker.
+    fn folder_tab(&mut self, folder: home::Folder) {
+        if folder.storage_dir().is_none() || !self.browse.in_app() {
+            self.open_picker_at(folder);
+            return;
+        }
+        // A tab (even the lit one, tapped again) shows its folder from the top.
+        self.home_tab = home::HomeTab::Folder(folder);
+        self.browse.sub.clear();
+        self.browse.invalidate();
+    }
+
+    /// Open a file from a folder list or Recent by its path (full build).
+    #[cfg(target_os = "android")]
+    fn open_file_path(&mut self, path: &str) {
+        let p = std::path::Path::new(path);
+        let name = p.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+        match browse::read(std::path::Path::new(browse::ROOT), p) {
+            Ok(bytes) => self.open_bytes(&name, path, &bytes),
+            Err(_) if !self.browse.access => {
+                self.status = format!("To reopen {name}, turn on \u{201c}All files access\u{201d}: tap a folder tab, then Allow access.");
+            }
+            Err(e) => self.status = format!("Couldn't open {name}: {e}"),
+        }
+    }
+
+    /// Write a saved temporary file over the open document: by path (full build), through its
+    /// content:// address (Android), or by path (desktop).
+    fn write_back(&self, uri: &str, tmp: &std::path::Path) -> Result<(), String> {
+        #[cfg(target_os = "android")]
+        {
+            match self.android.as_ref() {
+                Some(app) if browse::is_path(uri) => android_bridge::write_path(app, uri, tmp),
+                Some(app) => android_bridge::write_uri(app, uri, tmp),
+                None => Err("no Android context".into()),
+            }
+        }
+        #[cfg(not(target_os = "android"))]
+        {
+            std::fs::copy(tmp, uri).map(|_| ()).map_err(|e| e.to_string())
+        }
+    }
+
     /// The file picker starting in one of the phone's folders (a folder tab).
     fn open_picker_at(&mut self, folder: home::Folder) {
         self.home_tab = home::HomeTab::Folder(folder);
@@ -320,6 +369,11 @@ impl SlateApp {
 
     fn open_recent(&mut self, uri: &str) {
         #[cfg(target_os = "android")]
+        if browse::is_path(uri) {
+            self.open_file_path(uri);
+            return;
+        }
+        #[cfg(target_os = "android")]
         if let Some(app) = self.android.as_ref() {
             if let Err(e) = android_bridge::open_uri(app, uri) {
                 self.status = format!("Couldn't reopen: {e}");
@@ -349,6 +403,7 @@ impl SlateApp {
         self.current_uri = None;
         self.discard_armed = false;
         self.status.clear();
+        self.browse.invalidate(); // a saved file may have changed: list its folder again
     }
 
     // ---- helpers over Word (`viewer`) and the other apps (`other`) ----------------------------
@@ -399,13 +454,7 @@ impl SlateApp {
             }
             Ok(_) => {}
         }
-        #[cfg(target_os = "android")]
-        let result = match self.android.as_ref() {
-            Some(app) => android_bridge::write_uri(app, &uri, &tmp),
-            None => Err("no Android context".into()),
-        };
-        #[cfg(not(target_os = "android"))]
-        let result = std::fs::copy(&tmp, &uri).map(|_| ()).map_err(|e| e.to_string());
+        let result = self.write_back(&uri, &tmp);
         match result {
             Ok(()) => {
                 if let Some(o) = self.other.as_mut() {
@@ -457,13 +506,8 @@ impl SlateApp {
             }
             Ok(_) => {}
         }
-        #[cfg(target_os = "android")]
-        let result = match self.android.as_ref() {
-            Some(app) => android_bridge::write_uri(app, &uri, &tmp),
-            None => Err("no Android context".into()),
-        };
-        #[cfg(not(target_os = "android"))]
-        let result = std::fs::copy(&tmp, &uri).map(|_| ()).map_err(|e| e.to_string());
+        let result = self.write_back(&uri, &tmp);
+        let Some(v) = self.viewer.as_mut() else { return };
         match result {
             Ok(()) => {
                 self.discard_armed = false;
@@ -550,7 +594,9 @@ impl SlateApp {
             let asked = if to_documents {
                 android_bridge::save_to_documents(app, name, mime, tmp)
             } else {
-                android_bridge::save_as_picker(app, name, mime, tmp, self.current_uri.as_deref())
+                // A document opened by path: start in its folder.
+                let start = self.current_uri.as_deref().map(|u| if browse::is_path(u) { browse::picker_uri(u).unwrap_or_default() } else { u.to_owned() });
+                android_bridge::save_as_picker(app, name, mime, tmp, start.as_deref().filter(|s| !s.is_empty()))
             };
             match asked {
                 Ok(()) => self.pending_save = Some((tmp.to_path_buf(), adopt)),
@@ -664,6 +710,14 @@ impl SlateApp {
         self.open_checked_at = now;
         let Some(app) = self.android.clone() else { return };
         self.poll_save_result(&app);
+        // "All files access" may have changed in Android's settings (Java re-checks on resume).
+        if self.browse.supported && !self.has_doc() {
+            let access = android_bridge::has_all_files_access(&app).unwrap_or(false);
+            if access != self.browse.access {
+                self.browse.access = access;
+                self.browse.invalidate();
+            }
+        }
         // Insert › Picture: the picked image, copied into files/insert/ by Java.
         if self.doc_editing() {
             match android_bridge::take_pending_image(&app) {
@@ -768,7 +822,8 @@ impl SlateApp {
         let ids_open = self.ids.as_ref().is_some_and(|m| m.open);
         #[cfg(not(feature = "pdf"))]
         let ids_open = false;
-        let want = self.has_doc() || self.app_home.is_some() || self.prefs.open || ids_open || links::is_open() || barcode_maker::is_open();
+        let in_subfolder = !self.has_doc() && !self.browse.sub.is_empty() && matches!(self.home_tab, home::HomeTab::Folder(_));
+        let want = self.has_doc() || self.app_home.is_some() || self.prefs.open || ids_open || links::is_open() || barcode_maker::is_open() || in_subfolder;
         let Some(app) = self.android.clone() else { return };
         if self.back_handled_sent != Some(want) {
             match android_bridge::set_back_handled(&app, want) {
@@ -807,6 +862,9 @@ impl SlateApp {
                 Some(v) if v.editing => v.set_editing(false),
                 Some(_) => self.close_document(),
                 None if self.prefs.back() => {}
+                None if in_subfolder => {
+                    self.browse.sub.pop();
+                }
                 None => self.app_home = None,
             }
         }
@@ -1347,8 +1405,10 @@ impl eframe::App for SlateApp {
             } else if !self.status.is_empty() {
                 ui.ctx().request_repaint_after(std::time::Duration::from_millis(500));
             }
-            // A folder tab stays lit while its picker is open, then Recent again.
-            if self.home_tab != home::HomeTab::Recent {
+            // A folder tab stays lit while its picker is open, then Recent again. (Full build: a
+            // folder whose list shows in the app stays lit until another tab is tapped.)
+            let listed = matches!(self.home_tab, home::HomeTab::Folder(f) if f.storage_dir().is_some()) && self.browse.in_app();
+            if self.home_tab != home::HomeTab::Recent && !listed {
                 #[cfg(target_os = "android")]
                 let still_open = self.android.as_ref().is_some_and(|app| android_bridge::is_picker_open(app).unwrap_or(false));
                 #[cfg(not(target_os = "android"))]
@@ -1359,14 +1419,51 @@ impl eframe::App for SlateApp {
                     self.home_tab = home::HomeTab::Recent;
                 }
             }
+            let below = match self.home_tab {
+                home::HomeTab::Folder(_) if listed && !self.browse.access => home::Below::AccessCard,
+                home::HomeTab::Folder(folder) if listed => {
+                    if let Some(dir) = self.browse.dir(folder) {
+                        self.browse.want(dir, self.app_home);
+                    }
+                    if self.browse.loading {
+                        ui.ctx().request_repaint_after(std::time::Duration::from_millis(100));
+                    }
+                    home::Below::Folder { folder, sub: &self.browse.sub, entries: &self.browse.entries, loading: self.browse.loading, error: self.browse.error.as_deref() }
+                }
+                _ => home::Below::Recent,
+            };
             let action = match self.app_home {
-                Some(tool) => home::app_home(ui, tool, &self.settings, self.mode, inset, self.home_tab),
-                None => home::show(ui, &self.settings, self.mode, inset, self.home_tab),
+                Some(tool) => home::app_home(ui, tool, &self.settings, self.mode, inset, self.home_tab, below),
+                None => home::show(ui, &self.settings, self.mode, inset, self.home_tab, below),
             };
             match action {
                 Some(home::HomeAction::OpenApp(t)) => self.app_home = Some(t),
                 Some(home::HomeAction::NewDocument) => self.new_document(),
-                Some(home::HomeAction::OpenPickerAt(f)) => self.open_picker_at(f),
+                Some(home::HomeAction::FolderTab(f)) => self.folder_tab(f),
+                Some(home::HomeAction::AllowAccess) => {
+                    #[cfg(target_os = "android")]
+                    if let Some(app) = self.android.as_ref() {
+                        if let Err(e) = android_bridge::open_all_files_settings(app) {
+                            self.status = format!("Couldn't open Android's settings: {e}");
+                        }
+                    }
+                }
+                Some(home::HomeAction::UsePicker) => {
+                    self.browse.use_picker = true;
+                    if let home::HomeTab::Folder(f) = self.home_tab {
+                        self.open_picker_at(f);
+                    }
+                }
+                Some(home::HomeAction::OpenPath(path)) => {
+                    #[cfg(target_os = "android")]
+                    self.open_file_path(&path);
+                    #[cfg(not(target_os = "android"))]
+                    self.open_path(std::path::Path::new(&path));
+                }
+                Some(home::HomeAction::EnterFolder(name)) => self.browse.sub.push(name),
+                Some(home::HomeAction::FolderUp) => {
+                    self.browse.sub.pop();
+                }
                 Some(home::HomeAction::BackToSuite) => self.app_home = None,
                 Some(home::HomeAction::OpenPicker) => self.open_picker(),
                 Some(home::HomeAction::ShowRecent) => self.home_tab = home::HomeTab::Recent,

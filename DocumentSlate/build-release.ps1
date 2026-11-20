@@ -9,11 +9,15 @@
 #     signed with the upload key if android\keystore.properties exists, else the debug key
 #     (debug key = fine for sideloading, rejected by the Play Store).
 #
-# Usage:  .\build-release.ps1          -> APK for sideloading
-#         .\build-release.ps1 -Bundle  -> also an Android App Bundle (.aab), the format Play wants
-# Result: android\app\build\outputs\apk\release\app-release.apk
-#         android\app\build\outputs\bundle\release\app-release.aab   (with -Bundle)
-param([switch]$Bundle)
+# Flavors (see android/app/build.gradle.kts):
+#   full (default) = GitHub / F-Droid: folder tabs list folders in the app ("All files access").
+#   play           = Google Play: no storage permission, folder tabs open Android's file picker.
+#
+# Usage:  .\build-release.ps1                       -> full APK for sideloading / GitHub
+#         .\build-release.ps1 -Flavor play -Bundle  -> Play APK + App Bundle (.aab), what Play wants
+# Result: android\app\build\outputs\apk\<flavor>\release\app-<flavor>-release.apk
+#         android\app\build\outputs\bundle\<flavor>Release\app-<flavor>-release.aab   (with -Bundle)
+param([switch]$Bundle, [ValidateSet("full", "play")][string]$Flavor = "full")
 $ErrorActionPreference = "Stop"
 Set-Location $PSScriptRoot      # run from the folder this script lives in (DocumentSlate\)
 
@@ -52,11 +56,13 @@ if ($LASTEXITCODE -ne 0) { throw "cargo ndk failed" }
 $so = Get-Item android\release-jniLibs\arm64-v8a\libdocument_slate.so
 "{0,-28} {1,7:N1} MB" -f "libdocument_slate.so:", ($so.Length / 1MB)
 
-# Step 2: package the APK. assembleRelease = build the "release" variant from build.gradle.kts.
+# Step 2: package the APK. assembleFullRelease = build the "full" flavor's "release" variant
+# from build.gradle.kts (assemblePlayRelease for Play).
 #   --offline = use only what's already in the Gradle cache (no downloads)
 Push-Location android
-#   bundleRelease = the same variant packed as an .aab (Play builds per-device APKs from it)
-$tasks = @("assembleRelease"); if ($Bundle) { $tasks += "bundleRelease" }
+#   bundle<Flavor>Release = the same variant packed as an .aab (Play builds per-device APKs from it)
+$F = $Flavor.Substring(0, 1).ToUpper() + $Flavor.Substring(1)   # full -> Full (Gradle task names)
+$tasks = @("assemble${F}Release"); if ($Bundle) { $tasks += "bundle${F}Release" }
 .\gradlew.bat --offline @tasks
 if ($LASTEXITCODE -ne 0) { Pop-Location; throw "gradle failed" }
 Pop-Location
@@ -65,13 +71,13 @@ Pop-Location
 #   APK size      = what you copy to the phone.
 #   Installed     ~ APK + the unpacked .so (Android extracts compressed native libraries
 #                   at install time), shown in Settings > Apps > Document Slate > Storage.
-$apk = Get-Item android\app\build\outputs\apk\release\app-release.apk
-"{0,-28} {1,7:N1} MB" -f "app-release.apk:", ($apk.Length / 1MB)
+$apk = Get-Item android\app\build\outputs\apk\$Flavor\release\app-$Flavor-release.apk
+"{0,-28} {1,7:N1} MB" -f "app-$Flavor-release.apk:", ($apk.Length / 1MB)
 "{0,-28} {1,7:N1} MB" -f "installed size (approx.):", (($apk.Length + $so.Length) / 1MB)
 "APK: $($apk.FullName)"
 if ($Bundle) {
-    $aab = Get-Item android\app\build\outputs\bundle\release\app-release.aab
-    "{0,-28} {1,7:N1} MB" -f "app-release.aab:", ($aab.Length / 1MB)
+    $aab = Get-Item android\app\build\outputs\bundle\${Flavor}Release\app-$Flavor-release.aab
+    "{0,-28} {1,7:N1} MB" -f "app-$Flavor-release.aab:", ($aab.Length / 1MB)
     "AAB: $($aab.FullName)"
 }
 if (-not (Test-Path android\keystore.properties)) { "NOTE: signed with the DEBUG key - not accepted by Play." }

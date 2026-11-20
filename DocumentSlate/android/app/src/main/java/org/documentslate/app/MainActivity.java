@@ -167,6 +167,59 @@ public class MainActivity extends GameActivity {
         });
     }
 
+    // ---- All files access ("full" flavor only) --------------------------------------------
+    // The full flavor (GitHub / F-Droid) declares MANAGE_EXTERNAL_STORAGE, so the folder tabs can
+    // list folders inside the app once the user turns "All files access" on in Android's
+    // settings. The Play flavor has no such permission and always uses the picker.
+
+    private volatile boolean allFilesGranted;
+
+    /** Called from Rust: this build can list folders itself (full flavor on Android 11+). */
+    public boolean hasAllFilesFlavor() {
+        return BuildConfig.ALL_FILES && android.os.Build.VERSION.SDK_INT >= 30;
+    }
+
+    /** Called from Rust: has the user granted "All files access"? Re-checked on every resume. */
+    public boolean hasAllFilesAccess() {
+        return allFilesGranted;
+    }
+
+    private void refreshAllFilesAccess() {
+        allFilesGranted = hasAllFilesFlavor() && android.os.Environment.isExternalStorageManager();
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        refreshAllFilesAccess();
+    }
+
+    /** Called from Rust: Android's "All files access" switch for this app. */
+    public void openAllFilesSettings() {
+        if (!hasAllFilesFlavor()) {
+            return;
+        }
+        runOnUiThread(() -> {
+            try {
+                Intent i = new Intent(android.provider.Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION,
+                        Uri.parse("package:" + getPackageName()));
+                startActivity(i);
+            } catch (android.content.ActivityNotFoundException e) {
+                // Some phones only have the list of all apps.
+                try {
+                    startActivity(new Intent(android.provider.Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION));
+                } catch (android.content.ActivityNotFoundException e2) {
+                    Log.w(TAG, "no all-files settings screen: " + e2);
+                }
+            }
+        });
+    }
+
+    /** Called from Rust after a save by path: tell Android's media index the file changed. */
+    public void scanFile(String path) {
+        android.media.MediaScannerConnection.scanFile(this, new String[]{path}, null, null);
+    }
+
     /** True while the document picker is on screen (the folder tab that opened it stays lit). */
     private volatile boolean pickerOpen;
 

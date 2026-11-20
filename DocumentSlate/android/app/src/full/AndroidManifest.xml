@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Merged into the main manifest for the "full" flavor only (GitHub / F-Droid builds).
+     The Play flavor never asks for it. -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <!-- "All files access" (Android 11+): the user turns it on in Android's settings, never by a
+         pop-up. Lets the folder tabs list Download, Documents, Pictures, DCIM, Movies and Music
+         inside the app, and open and save documents in place by path. The app has no INTERNET
+         permission, so no file can leave the phone through it. -->
+    <uses-permission
+        android:name="android.permission.MANAGE_EXTERNAL_STORAGE"
+        tools:ignore="ScopedStorage" />
+</manifest>

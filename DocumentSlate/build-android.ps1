@@ -1,7 +1,7 @@
 # Build the Document Slate APK.
 #   1. cargo ndk compiles the Rust code into libdocument_slate.so for each Android CPU type
 #      and drops it into android/app/src/main/jniLibs/<abi>/
-#   2. Gradle packages that into an APK (android/app/build/outputs/apk/debug/app-debug.apk)
+#   2. Gradle packages that into an APK (android/app/build/outputs/apk/full/debug/app-full-debug.apk)
 # Usage:  .\build-android.ps1            (debug, phone + emulator)
 #         .\build-android.ps1 -Install   (also install on the running emulator/phone via adb)
 param([switch]$Install)
@@ -16,11 +16,11 @@ cargo ndk -t arm64-v8a -t x86_64 --platform 26 -o android/app/src/main/jniLibs b
 if ($LASTEXITCODE -ne 0) { throw "cargo ndk failed" }
 
 Push-Location android
-.\gradlew.bat assembleDebug
+.\gradlew.bat assembleFullDebug
 if ($LASTEXITCODE -ne 0) { Pop-Location; throw "gradle failed" }
 Pop-Location
 
 if ($Install) {
-    & "$env:ANDROID_HOME\platform-tools\adb.exe" install -r android/app/build/outputs/apk/debug/app-debug.apk
+    & "$env:ANDROID_HOME\platform-tools\adb.exe" install -r android/app/build/outputs/apk/full/debug/app-full-debug.apk
     & "$env:ANDROID_HOME\platform-tools\adb.exe" shell am start -n org.documentslate.app/.MainActivity
 }

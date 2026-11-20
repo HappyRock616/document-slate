@@ -22,11 +22,11 @@ echo "== Rust (Android)"
 cargo ndk -t x86_64 -t arm64-v8a --platform 26 -o android/app/src/main/jniLibs build --release --lib -q
 
 echo "== APK"
-(cd android && ./gradlew.bat assembleDebug --offline -q 2>&1 | grep -vi deprecat || true)
-test -f android/app/build/outputs/apk/debug/app-debug.apk
+(cd android && ./gradlew.bat assembleFullDebug --offline -q 2>&1 | grep -vi deprecat || true)
+test -f android/app/build/outputs/apk/full/debug/app-full-debug.apk
 
 echo "== Install + launch"
-"$ADB" install -r android/app/build/outputs/apk/debug/app-debug.apk | tail -1
+"$ADB" install -r android/app/build/outputs/apk/full/debug/app-full-debug.apk | tail -1
 "$ADB" shell am force-stop org.documentslate.app
 "$ADB" logcat -c
 "$ADB" shell am start -n org.documentslate.app/.MainActivity >/dev/null

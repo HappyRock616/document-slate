@@ -28,6 +28,28 @@ android {
         versionName = "0.1.1"
     }
 
+    // Two flavors of the same app (same package and version, so one can update the other):
+    //   full = GitHub / F-Droid / sideload. Adds "All files access" (MANAGE_EXTERNAL_STORAGE, in
+    //          src/full/AndroidManifest.xml) so the folder tabs list folders inside the app and
+    //          files open and save by path. Without the grant it falls back to the picker.
+    //   play = Google Play. No storage permission: folder tabs open Android's file picker.
+    // Rust asks MainActivity.hasAllFilesFlavor() (BuildConfig.ALL_FILES), so one Rust library
+    // serves both.
+    buildFeatures {
+        buildConfig = true
+    }
+    flavorDimensions += "store"
+    productFlavors {
+        create("full") {
+            dimension = "store"
+            buildConfigField("boolean", "ALL_FILES", "true")
+        }
+        create("play") {
+            dimension = "store"
+            buildConfigField("boolean", "ALL_FILES", "false")
+        }
+    }
+
     signingConfigs {
         if (uploadKey != null) {
             create("upload") {

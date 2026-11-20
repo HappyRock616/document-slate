@@ -4,6 +4,17 @@ Status (2026-11-19): GitHub done: public repository, signed releases (`v0.1.1` l
 protected. F-Droid: first submission closed (its inclusion policy wants about 3 months of active
 development first; read the whole policy before resubmitting). Retry around February 2027.
 
+## Build flavors: which store gets which
+
+| Flavor | Goes to | Folder tabs | Extra permission |
+|---|---|---|---|
+| `full` (default) | GitHub releases, F-Droid, sideload | list folders in the app (after the user turns on "All files access"); picker as fallback | `MANAGE_EXTERNAL_STORAGE` |
+| `play` | Google Play | open Android's file picker in that folder | none |
+
+Same package name and version for both, so one can update the other when signed with the same key.
+`build-release.ps1` builds `full` unless given `-Flavor play`; `dev/phone-test.sh` the same with
+`FLAVOR=play`. Play details: [play-store.md](play-store.md).
+
 ## 0. Before every upload
 
 1. Privacy scan: no names, user paths, device serials, emails or keys in tracked files.
@@ -31,7 +42,7 @@ git commit -m "Document Slate 0.1.0"
 gh repo create document-slate --public --source . --remote origin --push
 git tag v0.1.0
 git push origin v0.1.0
-gh release create v0.1.0 --title "Document Slate 0.1.0" --notes-file fastlane\metadata\android\en-US\changelogs\1.txt DocumentSlate\android\app\build\outputs\apk\release\app-release.apk#document-slate-0.1.0.apk
+gh release create v0.1.0 --title "Document Slate 0.1.0" --notes-file fastlane\metadata\android\en-US\changelogs\1.txt DocumentSlate\android\app\build\outputs\apk\full\release\app-full-release.apk#document-slate-0.1.0.apk
 ```
 
 Later releases: raise `versionCode`/`versionName` in `build.gradle.kts`, add
@@ -63,6 +74,8 @@ F-Droid builds the app **from source on its own servers** and signs it, so:
 - No Google Play Services, Firebase, ads or analytics. No INTERNET permission.
 - Google's encrypted dependency report turned off (`dependenciesInfo` in `build.gradle.kts`).
 - `-Punsigned` builds an unsigned release APK for F-Droid to sign.
+- F-Droid builds the `full` flavor (`gradle: [full]` in the recipe). Its one extra permission,
+  `MANAGE_EXTERNAL_STORAGE`, is optional for the user; F-Droid lists it on the app page.
 - No prebuilt binaries in the source tree (apart from the standard Gradle wrapper).
 - Licenses: MIT OR Apache-2.0 (code), OFL (fonts), Apache-2.0 (dictionaries).
 - Upstream ArtCraft names and logos removed from the app and saved files.
@@ -103,7 +116,7 @@ Builds:
     srclibs:
       - rustup@1.28.2
     gradle:
-      - yes
+      - full
     gradleprops:
       - unsigned
     ndk: 30.0.16248370
