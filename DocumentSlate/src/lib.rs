@@ -83,6 +83,10 @@ pub struct SlateApp {
     tool: theme::Tool,
     /// An app's own screen (Word Slate…) is showing when no document is open; None = suite start.
     app_home: Option<theme::Tool>,
+    /// Which folder tab is lit under the app bars: Recent, or the folder whose picker is open.
+    home_tab: home::HomeTab,
+    /// The next "save to" goes straight into Documents (first Save of a new document).
+    save_new_to_documents: bool,
     /// The viewer bar's ⋮ menu is open (keeps the bar from auto-hiding under it).
     bar_menu_open: bool,
     /// Preferences drawer (start screen, behind the app icon).
@@ -161,6 +165,8 @@ impl SlateApp {
             dark_icons_sent: None,
             other: None,
             app_home: None,
+            home_tab: home::HomeTab::Recent,
+            save_new_to_documents: false,
             bar_menu_open: false,
             prefs: prefs::Prefs::default(),
             #[cfg(feature = "pdf")]
@@ -277,22 +283,23 @@ impl SlateApp {
         self.status.clear();
     }
 
-    /// The file picker starting in Downloads or Documents.
+    /// The file picker starting in one of the phone's folders (a folder tab).
     fn open_picker_at(&mut self, folder: home::Folder) {
+        self.home_tab = home::HomeTab::Folder(folder);
+        let Some(dir) = folder.storage_dir() else {
+            self.open_picker();
+            return;
+        };
         #[cfg(target_os = "android")]
         if let Some(app) = self.android.as_ref() {
-            let doc = match folder {
-                home::Folder::Downloads => "primary%3ADownload",
-                home::Folder::Documents => "primary%3ADocuments",
-            };
-            let uri = format!("content://com.android.externalstorage.documents/document/{doc}");
+            let uri = format!("content://com.android.externalstorage.documents/document/primary%3A{dir}");
             if let Err(e) = android_bridge::open_document_picker_at(app, &uri) {
                 self.status = format!("File picker failed: {e}");
             }
         }
         #[cfg(not(target_os = "android"))]
         {
-            let _ = folder;
+            let _ = dir;
             self.open_picker();
         }
     }
@@ -372,6 +379,9 @@ impl SlateApp {
         let Some(o) = self.other.as_ref() else { return };
         let (name, ext, in_place) = (o.name().to_owned(), o.default_ext(), o.can_save_in_place());
         let Some(uri) = self.current_uri.clone().filter(|_| in_place) else {
+            // A new document goes straight into Documents; one that can't be saved in its own
+            // format asks where (starting in its own folder).
+            self.save_new_to_documents = self.current_uri.is_none();
             self.save_as(ext);
             return;
         };
@@ -424,7 +434,8 @@ impl SlateApp {
             return;
         }
         let Some(uri) = self.current_uri.clone() else {
-            // A new document (or the sample): ask where to save it.
+            // A new document (or the sample): straight into Documents.
+            self.save_new_to_documents = true;
             self.save_as("docx");
             return;
         };
@@ -532,16 +543,23 @@ impl SlateApp {
     }
 
     fn ask_where_to_save(&mut self, name: &str, tmp: &std::path::Path, adopt: bool) {
+        let to_documents = std::mem::take(&mut self.save_new_to_documents) && adopt;
         #[cfg(target_os = "android")]
         if let Some(app) = self.android.as_ref() {
-            match android_bridge::save_as_picker(app, name, word_viewer::mime_for(name), tmp) {
+            let mime = word_viewer::mime_for(name);
+            let asked = if to_documents {
+                android_bridge::save_to_documents(app, name, mime, tmp)
+            } else {
+                android_bridge::save_as_picker(app, name, mime, tmp, self.current_uri.as_deref())
+            };
+            match asked {
                 Ok(()) => self.pending_save = Some((tmp.to_path_buf(), adopt)),
                 Err(e) => self.status = format!("Save as failed: {e}"),
             }
         }
         #[cfg(not(target_os = "android"))]
         {
-            let _ = adopt;
+            let _ = (adopt, to_documents);
             self.status = format!("Desktop: wrote {} ({name})", tmp.display());
         }
     }
@@ -580,6 +598,7 @@ impl SlateApp {
     }
 
     fn file_action(&mut self, a: edit_bar::FileAction) {
+        self.save_new_to_documents = false; // only Save of a new document sets it, just below
         match a {
             edit_bar::FileAction::Save => self.save(),
             edit_bar::FileAction::SaveAs(ext) => self.save_as(ext),
@@ -1328,9 +1347,21 @@ impl eframe::App for SlateApp {
             } else if !self.status.is_empty() {
                 ui.ctx().request_repaint_after(std::time::Duration::from_millis(500));
             }
+            // A folder tab stays lit while its picker is open, then Recent again.
+            if self.home_tab != home::HomeTab::Recent {
+                #[cfg(target_os = "android")]
+                let still_open = self.android.as_ref().is_some_and(|app| android_bridge::is_picker_open(app).unwrap_or(false));
+                #[cfg(not(target_os = "android"))]
+                let still_open = false;
+                if still_open {
+                    ui.ctx().request_repaint_after(std::time::Duration::from_millis(300));
+                } else {
+                    self.home_tab = home::HomeTab::Recent;
+                }
+            }
             let action = match self.app_home {
-                Some(tool) => home::app_home(ui, tool, &self.settings, self.mode, inset),
-                None => home::show(ui, &self.settings, self.mode, inset),
+                Some(tool) => home::app_home(ui, tool, &self.settings, self.mode, inset, self.home_tab),
+                None => home::show(ui, &self.settings, self.mode, inset, self.home_tab),
             };
             match action {
                 Some(home::HomeAction::OpenApp(t)) => self.app_home = Some(t),
@@ -1338,6 +1369,7 @@ impl eframe::App for SlateApp {
                 Some(home::HomeAction::OpenPickerAt(f)) => self.open_picker_at(f),
                 Some(home::HomeAction::BackToSuite) => self.app_home = None,
                 Some(home::HomeAction::OpenPicker) => self.open_picker(),
+                Some(home::HomeAction::ShowRecent) => self.home_tab = home::HomeTab::Recent,
                 Some(home::HomeAction::ComingSoon(t)) => self.status = format!("{} is coming soon — Word Slate comes first", t.name()),
                 Some(home::HomeAction::OpenRecent(uri)) => self.open_recent(&uri),
                 Some(home::HomeAction::Forget(uri)) => self.settings.forget_recent(&uri),

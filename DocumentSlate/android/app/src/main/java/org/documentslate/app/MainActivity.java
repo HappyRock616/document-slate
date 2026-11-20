@@ -143,6 +143,7 @@ public class MainActivity extends GameActivity {
 
     /** The file picker, starting in the folder `initialUri` (a DocumentsContract URI) if given. */
     public void openDocumentPickerAt(String initialUri) {
+        pickerOpen = true;
         runOnUiThread(() -> {
             Intent pick = new Intent(Intent.ACTION_OPEN_DOCUMENT);
             pick.addCategory(Intent.CATEGORY_OPENABLE);
@@ -157,13 +158,28 @@ public class MainActivity extends GameActivity {
             if (initialUri != null && android.os.Build.VERSION.SDK_INT >= 26) {
                 pick.putExtra(android.provider.DocumentsContract.EXTRA_INITIAL_URI, android.net.Uri.parse(initialUri));
             }
-            startActivityForResult(pick, PICK_DOCUMENT);
+            try {
+                startActivityForResult(pick, PICK_DOCUMENT);
+            } catch (android.content.ActivityNotFoundException e) {
+                pickerOpen = false;
+                Log.w(TAG, "no file picker: " + e);
+            }
         });
+    }
+
+    /** True while the document picker is on screen (the folder tab that opened it stays lit). */
+    private volatile boolean pickerOpen;
+
+    public boolean isPickerOpen() {
+        return pickerOpen;
     }
 
     @Override
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
+        if (requestCode == PICK_DOCUMENT) {
+            pickerOpen = false;
+        }
         if (requestCode == CREATE_DOCUMENT) {
             finishSaveAs(resultCode, data);
             return;
@@ -267,13 +283,18 @@ public class MainActivity extends GameActivity {
     private volatile String saveError;
 
     /** Called from Rust: show the "save to" screen for a file Rust already wrote to sourcePath. */
-    public void saveAsPicker(String suggestedName, String mime, String sourcePath) {
+    public void saveAsPicker(String suggestedName, String mime, String sourcePath, String initialUri) {
         runOnUiThread(() -> {
             saveSource = sourcePath;
             Intent create = new Intent(Intent.ACTION_CREATE_DOCUMENT);
             create.addCategory(Intent.CATEGORY_OPENABLE);
             create.setType(mime);
             create.putExtra(Intent.EXTRA_TITLE, suggestedName);
+            // Start in the folder of the document being saved (the picker ignores addresses it
+            // can't place, e.g. files that came from another app).
+            if (initialUri != null) {
+                create.putExtra(android.provider.DocumentsContract.EXTRA_INITIAL_URI, Uri.parse(initialUri));
+            }
             create.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_WRITE_URI_PERMISSION
                     | Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION);
             startActivityForResult(create, CREATE_DOCUMENT);
@@ -302,6 +323,43 @@ public class MainActivity extends GameActivity {
                 savedUri = uri.toString();
             }
         }, "save-as").start();
+    }
+
+    /**
+     * Called from Rust: first Save of a new document. Writes it straight into the phone's
+     * Documents folder (MediaStore, no permission needed on Android 10+), keeping the name or
+     * letting Android add " (1)" if it's taken. Older Android: the "save to" screen instead.
+     * The outcome arrives through takeSaveResult(), like a Save as.
+     */
+    public void saveToDocuments(String name, String mime, String sourcePath) {
+        if (android.os.Build.VERSION.SDK_INT < 29) {
+            saveAsPicker(name, mime, sourcePath, null);
+            return;
+        }
+        new Thread(() -> {
+            try {
+                android.content.ContentValues v = new android.content.ContentValues();
+                v.put(android.provider.MediaStore.MediaColumns.DISPLAY_NAME, name);
+                v.put(android.provider.MediaStore.MediaColumns.MIME_TYPE, mime);
+                v.put(android.provider.MediaStore.MediaColumns.RELATIVE_PATH, android.os.Environment.DIRECTORY_DOCUMENTS + "/");
+                Uri uri = getContentResolver().insert(
+                        android.provider.MediaStore.Files.getContentUri(android.provider.MediaStore.VOLUME_EXTERNAL_PRIMARY), v);
+                if (uri == null) {
+                    saveError = "Android refused a new file in Documents";
+                    return;
+                }
+                String err = writeUri(uri.toString(), sourcePath);
+                if (err != null) {
+                    getContentResolver().delete(uri, null, null);
+                    saveError = err;
+                } else {
+                    savedName = displayName(uri);
+                    savedUri = uri.toString();
+                }
+            } catch (RuntimeException e) {
+                saveError = String.valueOf(e.getMessage());
+            }
+        }, "save-documents").start();
     }
 
     /** Called from Rust: "uri\nname" of a finished Save as, "!error" (incl. "!cancelled"), or null. */

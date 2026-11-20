@@ -25,13 +25,60 @@ pub enum HomeAction {
     OpenPickerAt(Folder),
     /// From an app's screen back to the suite's start screen.
     BackToSuite,
+    /// The Recent tab was tapped.
+    ShowRecent,
 }
 
-/// Folders the app symbol's menu can open the file picker in.
-#[derive(Clone, Copy, Debug)]
+/// The phone folders behind the folder tabs. Each tab opens Android's file picker in that
+/// folder (the app has no permission to list folders itself, by design).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Folder {
     Downloads,
     Documents,
+    Pictures,
+    Camera,
+    Movies,
+    Music,
+    /// The picker wherever it starts (other storage, SD cards, other apps' files).
+    Browse,
+}
+
+impl Folder {
+    /// Tab order after Recent.
+    pub const TABS: [Folder; 7] = [Folder::Downloads, Folder::Documents, Folder::Pictures, Folder::Camera, Folder::Movies, Folder::Music, Folder::Browse];
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Folder::Downloads => "Downloads",
+            Folder::Documents => "Documents",
+            Folder::Pictures => "Pictures",
+            Folder::Camera => "Camera",
+            Folder::Movies => "Movies",
+            Folder::Music => "Music",
+            Folder::Browse => "Browse",
+        }
+    }
+
+    /// The folder's name on the phone's shared storage; None = no particular folder.
+    pub fn storage_dir(self) -> Option<&'static str> {
+        match self {
+            Folder::Downloads => Some("Download"),
+            Folder::Documents => Some("Documents"),
+            Folder::Pictures => Some("Pictures"),
+            Folder::Camera => Some("DCIM"),
+            Folder::Movies => Some("Movies"),
+            Folder::Music => Some("Music"),
+            Folder::Browse => None,
+        }
+    }
+}
+
+/// The folder tab that is lit: Recent (its list shows below the tabs) or a folder whose picker
+/// is open.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum HomeTab {
+    Recent,
+    Folder(Folder),
 }
 
 /// File types each app opens (Recent on an app's screen only lists these).
@@ -87,7 +134,7 @@ fn badge_letter(tool: Tool) -> &'static str {
     }
 }
 
-pub fn show(ui: &mut egui::Ui, settings: &Settings, mode: Mode, top_inset: f32) -> Option<HomeAction> {
+pub fn show(ui: &mut egui::Ui, settings: &Settings, mode: Mode, top_inset: f32, tab: HomeTab) -> Option<HomeAction> {
     let mut action = None;
     let p = mode.palette();
 
@@ -152,15 +199,18 @@ pub fn show(ui: &mut egui::Ui, settings: &Settings, mode: Mode, top_inset: f32) 
                     if app_bar(ui, tool, width) {
                         action = Some(if tool.available() { HomeAction::OpenApp(tool) } else { HomeAction::ComingSoon(tool) });
                     }
-                    ui.add_space(10.0);
+                    ui.add_space(8.0);
                 }
-                ui.add_space(14.0);
+                ui.add_space(8.0);
 
+                if let Some(a) = folder_tabs(ui, tab, p.text, width, &p) {
+                    action = Some(a);
+                }
+                ui.add_space(10.0);
                 if !settings.keep_recent {
+                    ui.label(RichText::new("Recent is turned off in Preferences.").weak());
                     return;
                 }
-                ui.label(RichText::new("Recent").size(16.0).strong());
-                ui.add_space(6.0);
                 if settings.recent.is_empty() {
                     ui.label(RichText::new("Documents you open will appear here.").weak());
                 }
@@ -185,7 +235,7 @@ pub fn show(ui: &mut egui::Ui, settings: &Settings, mode: Mode, top_inset: f32) 
 /// One app's own screen (e.g. Word Slate): the app banner (its symbol, boxed as a button that
 /// opens a menu of file places, and the name), a "New Word Slate" bar, and Recent files of the
 /// types this app opens.
-pub fn app_home(ui: &mut egui::Ui, tool: Tool, settings: &Settings, mode: Mode, top_inset: f32) -> Option<HomeAction> {
+pub fn app_home(ui: &mut egui::Ui, tool: Tool, settings: &Settings, mode: Mode, top_inset: f32, tab: HomeTab) -> Option<HomeAction> {
     let mut action = None;
     let p = mode.palette();
     let accent = tool.accent();
@@ -217,12 +267,6 @@ pub fn app_home(ui: &mut egui::Ui, tool: Tool, settings: &Settings, mode: Mode, 
                 if crate::chrome::menu_item(ui, "Browse files\u{2026}") {
                     action = Some(HomeAction::OpenPicker);
                 }
-                if crate::chrome::menu_item(ui, "Downloads") {
-                    action = Some(HomeAction::OpenPickerAt(Folder::Downloads));
-                }
-                if crate::chrome::menu_item(ui, "Documents") {
-                    action = Some(HomeAction::OpenPickerAt(Folder::Documents));
-                }
                 ui.separator();
                 let other = match mode {
                     Mode::Dark => "Light mode",
@@ -251,15 +295,15 @@ pub fn app_home(ui: &mut egui::Ui, tool: Tool, settings: &Settings, mode: Mode, 
                 if new_bar(ui, tool, width, &p) {
                     action = Some(HomeAction::NewDocument);
                 }
-                ui.add_space(18.0);
-                let kind = match tool {
-                    Tool::Word => "documents",
-                    Tool::Grid => "spreadsheets",
-                    Tool::Deck => "presentations",
-                    Tool::Page => "PDFs",
-                };
-                ui.label(RichText::new(format!("Recent {kind}")).size(16.0).strong());
-                ui.add_space(6.0);
+                ui.add_space(16.0);
+                if let Some(a) = folder_tabs(ui, tab, accent, width, &p) {
+                    action = Some(a);
+                }
+                ui.add_space(10.0);
+                if !settings.keep_recent {
+                    ui.label(RichText::new("Recent is turned off in Preferences.").weak());
+                    return;
+                }
                 let mine: Vec<&settings::Recent> = settings.recent.iter().filter(|r| belongs(tool, &r.name)).collect();
                 if mine.is_empty() {
                     ui.label(RichText::new(format!("{} you open will appear here.", tool.blurb().split(" \u{b7} ").next().unwrap_or("Files"))).weak());
@@ -306,28 +350,127 @@ fn new_bar(ui: &mut egui::Ui, tool: Tool, width: f32, p: &theme::Palette) -> boo
 /// One app bar: rounded bar in the app's colour, the name in Audiowide (charcoal, black outline),
 /// what it opens underneath. Returns true when tapped.
 fn app_bar(ui: &mut egui::Ui, tool: Tool, width: f32) -> bool {
-    let (rect, resp) = ui.allocate_exact_size(egui::vec2(width, 84.0), egui::Sense::click());
+    let (rect, resp) = ui.allocate_exact_size(egui::vec2(width, 59.0), egui::Sense::click());
     let painter = ui.painter();
     let mut fill = tool.accent();
     if resp.is_pointer_button_down_on() {
         fill = fill.gamma_multiply(0.85);
     }
     // Soft shadow, then the bar.
-    painter.rect_filled(rect.translate(egui::vec2(0.0, 3.0)), 14.0, egui::Color32::from_black_alpha(50));
-    painter.rect_filled(rect, 14.0, fill);
+    // Everything at 70% of the first design (84 px bars), to make room for the folder tabs.
+    painter.rect_filled(rect.translate(egui::vec2(0.0, 2.0)), 10.0, egui::Color32::from_black_alpha(50));
+    painter.rect_filled(rect, 10.0, fill);
 
     // The app's symbol from the app icon, enlarged, then the name beside it.
-    let glyph = egui::Rect::from_min_size(egui::pos2(rect.left() + 12.0, rect.center().y - 30.0), egui::vec2(60.0, 60.0));
+    let glyph = egui::Rect::from_min_size(egui::pos2(rect.left() + 9.0, rect.center().y - 21.0), egui::vec2(42.0, 42.0));
     app_glyph(painter, glyph, tool, theme::BRAND_TEXT, egui::Color32::BLACK);
-    let x = glyph.right() + 10.0;
-    outlined_text(painter, egui::pos2(x, rect.top() + 32.0), tool.name(), theme::brand_font(30.0), theme::BRAND_TEXT, egui::Color32::BLACK);
-    painter.text(egui::pos2(x + 2.0, rect.bottom() - 18.0), egui::Align2::LEFT_CENTER, tool.blurb(), egui::FontId::proportional(14.0), theme::ON_ACCENT);
+    let x = glyph.right() + 7.0;
+    outlined_text(painter, egui::pos2(x, rect.top() + 22.0), tool.name(), theme::brand_font(21.0), theme::BRAND_TEXT, egui::Color32::BLACK);
+    painter.text(egui::pos2(x + 1.5, rect.bottom() - 13.0), egui::Align2::LEFT_CENTER, tool.blurb(), egui::FontId::proportional(11.0), theme::ON_ACCENT);
     if !tool.available() {
-        let tag = egui::Rect::from_min_size(egui::pos2(rect.right() - 94.0, rect.bottom() - 30.0), egui::vec2(84.0, 22.0));
-        painter.rect_filled(tag, 11.0, egui::Color32::from_black_alpha(70));
-        painter.text(tag.center(), egui::Align2::CENTER_CENTER, "Coming soon", egui::FontId::proportional(11.5), theme::ON_ACCENT);
+        let tag = egui::Rect::from_min_size(egui::pos2(rect.right() - 66.0, rect.bottom() - 21.0), egui::vec2(59.0, 15.0));
+        painter.rect_filled(tag, 7.5, egui::Color32::from_black_alpha(70));
+        painter.text(tag.center(), egui::Align2::CENTER_CENTER, "Coming soon", egui::FontId::proportional(8.5), theme::ON_ACCENT);
     }
     resp.clicked()
+}
+
+/// Height of a folder tab (the strip under the app bars).
+const TAB_H: f32 = 40.0;
+
+/// The side-scrolling folder tabs: Recent first, then the phone's folders. The lit tab has a
+/// frame in `highlight` (the app's color on an app screen) and opens into the line under the row.
+fn folder_tabs(ui: &mut egui::Ui, selected: HomeTab, highlight: egui::Color32, width: f32, p: &theme::Palette) -> Option<HomeAction> {
+    let mut action = None;
+    let left = ui.cursor().left();
+    let mut bottom = None;
+    let mut lit_rect = None;
+    let out = egui::ScrollArea::horizontal()
+        .id_salt("folder_tabs")
+        .max_width(width)
+        .scroll_bar_visibility(egui::scroll_area::ScrollBarVisibility::AlwaysHidden)
+        .show(ui, |ui| {
+            ui.horizontal(|ui| {
+                ui.spacing_mut().item_spacing.x = 6.0;
+                let tabs = std::iter::once(HomeTab::Recent).chain(Folder::TABS.into_iter().map(HomeTab::Folder));
+                for tab in tabs {
+                    let (clicked, shape) = folder_tab(ui, tab, tab == selected, highlight, p);
+                    bottom = Some(shape.bottom());
+                    if tab == selected {
+                        lit_rect = Some(shape);
+                    }
+                    if clicked {
+                        action = Some(match tab {
+                            HomeTab::Recent => HomeAction::ShowRecent,
+                            HomeTab::Folder(f) => HomeAction::OpenPickerAt(f),
+                        });
+                    }
+                }
+            });
+        });
+    // The line the tabs stand on, then the lit tab's opening cut into it (both where the tabs
+    // really ended up, inside the visible part of the strip).
+    if let Some(y) = bottom {
+        let painter = ui.painter();
+        painter.rect_filled(egui::Rect::from_min_max(egui::pos2(left, y), egui::pos2(left + width, y + 2.0)), 0.0, highlight);
+        if let Some(r) = lit_rect {
+            let view = out.inner_rect;
+            let (x0, x1) = ((r.left() + 2.0).max(view.left()), (r.right() - 2.0).min(view.right()));
+            if x1 > x0 {
+                painter.rect_filled(egui::Rect::from_min_max(egui::pos2(x0, y - 2.0), egui::pos2(x1, y + 2.0)), 0.0, p.control);
+            }
+        }
+    }
+    action
+}
+
+/// One folder tab: rounded top corners, a small symbol (clock, folder, magnifier) and the name.
+/// Returns (tapped, the tab's outline).
+fn folder_tab(ui: &mut egui::Ui, tab: HomeTab, lit: bool, highlight: egui::Color32, p: &theme::Palette) -> (bool, egui::Rect) {
+    let label = match tab {
+        HomeTab::Recent => "Recent",
+        HomeTab::Folder(f) => f.label(),
+    };
+    let ink = if lit { p.text } else { p.text.gamma_multiply(0.7) };
+    let galley = ui.painter().layout_no_wrap(label.to_owned(), egui::FontId::proportional(15.0), ink);
+    let w = 12.0 + 18.0 + 8.0 + galley.size().x + 14.0;
+    let (rect, resp) = ui.allocate_exact_size(egui::vec2(w, TAB_H), egui::Sense::click());
+    let shape = egui::Rect::from_min_size(rect.min, egui::vec2(w, TAB_H));
+    let corners = egui::CornerRadius { nw: 10, ne: 10, sw: 0, se: 0 };
+    let fill = if lit || resp.is_pointer_button_down_on() { p.control } else { p.surface };
+    let painter = ui.painter();
+    painter.rect_filled(shape, corners, fill);
+    if lit {
+        painter.rect_stroke(shape, corners, egui::Stroke::new(2.0, highlight), egui::StrokeKind::Inside);
+    } else {
+        painter.rect_stroke(shape, corners, egui::Stroke::new(1.0, p.text.gamma_multiply(0.12)), egui::StrokeKind::Inside);
+    }
+
+    // Symbol (about 18 x 14), then the name.
+    let c = egui::pos2(shape.left() + 12.0 + 9.0, shape.center().y);
+    let s = egui::Stroke::new(1.6, ink);
+    match tab {
+        HomeTab::Recent => {
+            painter.circle_stroke(c, 7.5, s);
+            painter.line_segment([c, c + egui::vec2(0.0, -4.5)], s);
+            painter.line_segment([c, c + egui::vec2(3.5, 1.5)], s);
+        }
+        HomeTab::Folder(Folder::Browse) => {
+            let m = c + egui::vec2(-1.5, -1.5);
+            painter.circle_stroke(m, 5.0, s);
+            painter.line_segment([m + egui::vec2(3.6, 3.6), m + egui::vec2(8.0, 8.0)], egui::Stroke::new(2.2, ink));
+        }
+        HomeTab::Folder(_) => {
+            let body = egui::Rect::from_min_max(c + egui::vec2(-9.0, -4.0), c + egui::vec2(9.0, 7.0));
+            painter.rect_stroke(body, 2.0, s, egui::StrokeKind::Middle);
+            painter.add(egui::Shape::line(
+                vec![c + egui::vec2(-8.0, -4.0), c + egui::vec2(-7.0, -7.0), c + egui::vec2(-2.0, -7.0), c + egui::vec2(0.0, -4.0)],
+                s,
+            ));
+        }
+    }
+    painter.galley(egui::pos2(shape.left() + 38.0, shape.center().y - galley.size().y / 2.0), galley, ink);
+    (resp.clicked(), shape)
 }
 
 /// One app's symbol from the app icon (Branding/Icon/master/*.svg: each symbol sits in a 150 x 150

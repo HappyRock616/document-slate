@@ -53,15 +53,43 @@ pub fn write_uri(app: &AndroidApp, uri: &str, path: &Path) -> Result<(), String>
 
 /// `MainActivity.saveAsPicker(name, mime, source)`: Android's "save to" screen; Java copies
 /// `source` to wherever the user chooses. The outcome arrives through [`take_save_result`].
-pub fn save_as_picker(app: &AndroidApp, suggested_name: &str, mime: &str, source: &Path) -> Result<(), String> {
+/// `initial`: the open document's address, so the screen starts in that document's folder.
+pub fn save_as_picker(app: &AndroidApp, suggested_name: &str, mime: &str, source: &Path, initial: Option<&str>) -> Result<(), String> {
     crate::rebrand::scrub_file(source); // no upstream app names in files leaving the app
     with_activity(app, |env, act| {
         let n = env.new_string(suggested_name)?;
         let m = env.new_string(mime)?;
         let s = env.new_string(source.to_string_lossy())?;
-        env.call_method(act, "saveAsPicker", "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V", &[(&n).into(), (&m).into(), (&s).into()])?;
+        let i = match initial {
+            Some(u) => JObject::from(env.new_string(u)?),
+            None => JObject::null(),
+        };
+        env.call_method(
+            act,
+            "saveAsPicker",
+            "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V",
+            &[(&n).into(), (&m).into(), (&s).into(), (&i).into()],
+        )?;
         Ok(())
     })
+}
+
+/// `MainActivity.saveToDocuments(name, mime, source)`: first Save of a new document, straight
+/// into the phone's Documents folder. The outcome arrives through [`take_save_result`].
+pub fn save_to_documents(app: &AndroidApp, name: &str, mime: &str, source: &Path) -> Result<(), String> {
+    crate::rebrand::scrub_file(source); // no upstream app names in files leaving the app
+    with_activity(app, |env, act| {
+        let n = env.new_string(name)?;
+        let m = env.new_string(mime)?;
+        let s = env.new_string(source.to_string_lossy())?;
+        env.call_method(act, "saveToDocuments", "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V", &[(&n).into(), (&m).into(), (&s).into()])?;
+        Ok(())
+    })
+}
+
+/// `MainActivity.isPickerOpen()`: the document picker is still on screen.
+pub fn is_picker_open(app: &AndroidApp) -> Result<bool, String> {
+    with_activity(app, |env, act| env.call_method(act, "isPickerOpen", "()Z", &[])?.z())
 }
 
 pub enum SaveResult {
