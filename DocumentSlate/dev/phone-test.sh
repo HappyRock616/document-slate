@@ -2,7 +2,7 @@
 # Build Document Slate for a real phone (arm64 only), install it, start it, and optionally take a
 # screenshot. Stops at the first error.
 # Builds a RELEASE APK signed with the release key (android/keystore.properties), so it installs
-# over the GitHub/Obtainium copy on the phone. No debug builds (Darren, 2026-11-19).
+# over the GitHub/Obtainium copy on the phone. No debug builds.
 # Faster than build-release.ps1: plain release profile (thin LTO) instead of release-small.
 # Device: set PHONE=<serial from 'adb devices'> or put it in dev/local.env (git-ignored).
 #   usage (Git Bash):  dev/phone-test.sh [screenshot-name]

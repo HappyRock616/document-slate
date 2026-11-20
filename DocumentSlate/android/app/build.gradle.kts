@@ -24,8 +24,8 @@ android {
         applicationId = "org.documentslate.app"
         minSdk = 26
         targetSdk = 37
-        versionCode = 2
-        versionName = "0.1.1"
+        versionCode = 3
+        versionName = "0.1.2"
     }
 
     // Two flavors of the same app (same package and version, so one can update the other):

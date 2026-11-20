@@ -1,0 +1,4 @@
+- Folder tabs on the start and app screens: Recent, Downloads, Documents, Pictures, Camera, Movies, Music, Browse.
+- GitHub/F-Droid build: with "All files access" turned on, folder tabs list your documents inside the app (optional; without it they open Android's file picker).
+- First Save of a new document goes straight to Documents; Save as starts in the document's folder.
+- Shorter app bars.

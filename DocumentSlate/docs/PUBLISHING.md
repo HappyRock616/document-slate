@@ -1,6 +1,6 @@
 # Publishing: GitHub and F-Droid
 
-Status (2026-11-19): GitHub done: public repository, signed releases (`v0.1.1` latest), `main`
+Status (2026-11-20): GitHub done: public repository, signed releases (`v0.1.2` latest), `main`
 protected. F-Droid: first submission closed (its inclusion policy wants about 3 months of active
 development first; read the whole policy before resubmitting). Retry around February 2027.
 
